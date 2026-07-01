@@ -1,9 +1,10 @@
 import type { Context } from "telegraf";
+import type { InlineKeyboardMarkup } from "telegraf/types";
 import { isMessageNotModifiedError } from "../utils/telegram-format";
 
 export type ProgressExtras = {
   parse_mode?: "Markdown";
-  reply_markup?: unknown;
+  reply_markup?: InlineKeyboardMarkup;
 };
 
 export const ACTION_PROGRESS_LABELS: Record<string, string> = {
