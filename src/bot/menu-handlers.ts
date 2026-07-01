@@ -29,7 +29,7 @@ import {
   userRemoveConfirmKeyboard,
 } from "./keyboards";
 import type { BotManager } from "../services/bot-manager";
-import { isMessageNotModifiedError } from "../utils/telegram-format";
+import { isCallbackQueryExpiredError, isMessageNotModifiedError } from "../utils/telegram-format";
 
 export interface MenuContext {
   manager: BotManager;
@@ -40,6 +40,19 @@ export interface MenuContext {
 }
 
 type MenuCtx = Context;
+
+async function ackCallback(
+  ctx: MenuCtx,
+  text?: string,
+  options?: { show_alert?: boolean },
+): Promise<void> {
+  if (!ctx.callbackQuery) return;
+  try {
+    await ctx.answerCbQuery(text, options);
+  } catch (err) {
+    if (!isCallbackQueryExpiredError(err)) throw err;
+  }
+}
 
 async function editOrReply(ctx: MenuCtx, text: string, opts?: object): Promise<void> {
   if (ctx.callbackQuery && "message" in ctx.callbackQuery && ctx.callbackQuery.message) {
@@ -55,16 +68,25 @@ async function editOrReply(ctx: MenuCtx, text: string, opts?: object): Promise<v
   await ctx.reply(text, opts);
 }
 
-async function respond(ctx: MenuCtx, text: string, keyboard: ReturnType<typeof mainMenuKeyboard>): Promise<void> {
-  const opts = { parse_mode: "Markdown" as const, ...keyboard };
-  if (ctx.callbackQuery) await ctx.answerCbQuery();
+async function present(
+  ctx: MenuCtx,
+  text: string,
+  keyboard?: ReturnType<typeof mainMenuKeyboard>,
+): Promise<void> {
+  const opts = keyboard
+    ? { parse_mode: "Markdown" as const, ...keyboard }
+    : { parse_mode: "Markdown" as const };
   await editOrReply(ctx, text, opts);
 }
 
+async function respond(ctx: MenuCtx, text: string, keyboard: ReturnType<typeof mainMenuKeyboard>): Promise<void> {
+  await ackCallback(ctx);
+  await present(ctx, text, keyboard);
+}
+
 async function respondPlain(ctx: MenuCtx, text: string): Promise<void> {
-  const opts = { parse_mode: "Markdown" as const };
-  if (ctx.callbackQuery) await ctx.answerCbQuery();
-  await editOrReply(ctx, text, opts);
+  await ackCallback(ctx);
+  await present(ctx, text);
 }
 
 export async function showMainMenu(ctx: MenuCtx, access: AccessControl): Promise<void> {
@@ -86,6 +108,7 @@ export async function showBotList(ctx: MenuCtx, deps: MenuContext): Promise<void
   const userId = ctx.from?.id;
   if (userId === undefined) return;
 
+  await ackCallback(ctx, "Обновляю список…");
   const statuses = await deps.manager.listStatuses();
   const visible = deps.access.filterStatuses(userId, statuses);
 
@@ -93,7 +116,7 @@ export async function showBotList(ctx: MenuCtx, deps: MenuContext): Promise<void
     const hint = deps.access.isAdmin(userId)
       ? "Ботов пока нет. Добавьте: `/botadd <id> <service> [name]`"
       : "Вам не назначено ни одного бота.";
-    await respond(ctx, hint, backToMainKeyboard());
+    await present(ctx, hint, backToMainKeyboard());
     return;
   }
 
@@ -101,7 +124,7 @@ export async function showBotList(ctx: MenuCtx, deps: MenuContext): Promise<void
   for (const { bot, state } of visible) {
     lines.push(`• ${bot.name} (\`${bot.id}\`) — ${state}`);
   }
-  await respond(ctx, lines.join("\n"), botListKeyboard(visible));
+  await present(ctx, lines.join("\n"), botListKeyboard(visible));
 }
 
 export async function showBotDetail(
@@ -117,9 +140,10 @@ export async function showBotDetail(
     return;
   }
 
+  await ackCallback(ctx);
   const status = await deps.manager.getStatus(botId);
   if (!status) {
-    await respondPlain(ctx, `Бот \`${botId}\` не найден.`);
+    await present(ctx, `Бот \`${botId}\` не найден.`);
     return;
   }
 
@@ -132,7 +156,7 @@ export async function showBotDetail(
     "Выберите действие:",
   ].join("\n");
 
-  await respond(ctx, text, botActionsKeyboard(botId, deps.access.isAdmin(userId)));
+  await present(ctx, text, botActionsKeyboard(botId, deps.access.isAdmin(userId)));
 }
 
 export async function runBotAction(
@@ -145,39 +169,39 @@ export async function runBotAction(
   if (userId === undefined) return;
 
   if (!deps.access.canAccessBot(userId, botId)) {
-    await ctx.answerCbQuery("Нет доступа", { show_alert: true });
+    await ackCallback(ctx, "Нет доступа", { show_alert: true });
     return;
   }
 
   if (action === "status") {
+    await ackCallback(ctx, "Загрузка…");
     const result = await deps.manager.getDetailedStatus(botId);
     if (!result) {
-      await ctx.answerCbQuery("Бот не найден", { show_alert: true });
+      await ctx.reply("Бот не найден.");
       return;
     }
-    await ctx.answerCbQuery();
-    await ctx.reply(formatDetailedStatus(result.bot, result.command));
+    await ctx.reply(formatDetailedStatus(result.bot, result.command), { parse_mode: "Markdown" });
     return;
   }
 
   if (action === "logs") {
+    await ackCallback(ctx, "Загрузка…");
     const result = await deps.manager.getLogs(botId, 30);
     if (!result) {
-      await ctx.answerCbQuery("Бот не найден", { show_alert: true });
+      await ctx.reply("Бот не найден.");
       return;
     }
-    await ctx.answerCbQuery();
-    await ctx.reply(formatLogs(result.bot, result.command));
+    await ctx.reply(formatLogs(result.bot, result.command), { parse_mode: "Markdown" });
     return;
   }
 
+  await ackCallback(ctx, "Выполняю…");
   const result = await deps.manager.runAction(botId, action);
   if (!result) {
-    await ctx.answerCbQuery("Бот не найден", { show_alert: true });
+    await ctx.reply("Бот не найден.");
     return;
   }
 
-  await ctx.answerCbQuery(result.success ? "Готово" : "Ошибка");
   await ctx.reply(formatActionResult(result), {
     parse_mode: "Markdown",
     ...botActionsKeyboard(botId, deps.access.isAdmin(userId)),
