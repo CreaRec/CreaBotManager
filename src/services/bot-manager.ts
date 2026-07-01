@@ -1,6 +1,11 @@
-import { formatSudoHint, wrapCodeBlock } from "../utils/telegram-format";
+import { formatSudoHint, isSudoDenied, wrapCodeBlock } from "../utils/telegram-format";
 import type { BotRegistryStore } from "./bot-registry";
 import type { BotRegistry, ManagedBot } from "./bot-registry";
+import {
+  formatHumanServiceStatus,
+  parseSystemctlShow,
+  stateFromServiceProps,
+} from "./service-status-format";
 import {
   fetchServiceLogs,
   formatStatusEmoji,
@@ -10,11 +15,6 @@ import {
   type CommandResult,
   type SystemdConfig,
 } from "./systemd";
-import {
-  formatHumanServiceStatus,
-  parseSystemctlShow,
-  stateFromServiceProps,
-} from "./service-status-format";
 
 const ACTION_LABELS: Record<ServiceAction, string> = {
   start: "Запуск",
@@ -42,6 +42,7 @@ export interface ServiceDetails {
   state: ReturnType<typeof parseIsActive>;
   props: Record<string, string>;
   command: CommandResult;
+  limitedDetails?: boolean;
 }
 
 export class BotManager {
@@ -104,18 +105,21 @@ export class BotManager {
 
     const command = await showServiceProperties(this.systemd, bot.serviceName);
     const props = parseSystemctlShow(command.stdout || command.stderr);
-    const state = stateFromServiceProps(props);
+    const showDenied = isSudoDenied(command.stderr || command.stdout);
 
     if (Object.keys(props).length === 0) {
       const fallback = await runSystemctl(this.systemd, "is-active", bot.serviceName);
+      const fallbackOutput = fallback.stdout || fallback.stderr;
       return {
         bot,
-        state: parseIsActive(fallback.stdout || fallback.stderr),
-        props: { ActiveState: fallback.stdout || fallback.stderr },
-        command: fallback.exitCode !== 0 ? fallback : command,
+        state: parseIsActive(fallbackOutput),
+        props: { ActiveState: fallbackOutput },
+        command: fallback,
+        limitedDetails: showDenied,
       };
     }
 
+    const state = stateFromServiceProps(props);
     return { bot, state, props, command };
   }
 

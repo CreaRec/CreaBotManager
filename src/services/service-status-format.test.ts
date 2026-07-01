@@ -63,4 +63,17 @@ describe("service-status-format", () => {
     expect(formatServiceStateLabel("active", "running")).toBe("работает");
     expect(formatBytes(1536)).toBe("1.5 KB");
   });
+
+  it("shows limited-details hint when show is denied but is-active works", () => {
+    const text = formatHumanServiceStatus({
+      bot: { id: "flibusta", name: "FlibustaBot", serviceName: "telegram-flibusta" },
+      state: "active",
+      props: { ActiveState: "active" },
+      limitedDetails: true,
+    });
+
+    expect(text).toContain("работает");
+    expect(text).toContain("systemctl show");
+    expect(text).not.toContain("Нет доступа к systemctl");
+  });
 });
