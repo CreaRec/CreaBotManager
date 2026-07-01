@@ -13,14 +13,18 @@
 # Override any of these via environment variables:
 #   SERVER_HOST, SSH_USER, REMOTE_APP_DIR, SERVICE_NAME, DEPLOY_PASSWORD
 #
-# Optional DEPLOY_PASSWORD in local .env (or env) supplies SSH/sudo passwords via sshpass.
-# When unset, SSH and sudo prompt interactively as before.
+# Optional DEPLOY_PASSWORD in local .env, env, or GitHub Actions secret supplies SSH/sudo
+# passwords via sshpass. When unset, SSH and sudo prompt interactively as before.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # shellcheck source=scripts/lib.sh
 . scripts/lib.sh
+
+is_non_interactive_deploy() {
+  [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ] || [ ! -t 0 ]
+}
 
 USE_REMOTE=false
 while [ $# -gt 0 ]; do
@@ -55,19 +59,29 @@ if [ -z "${DEPLOY_PASSWORD:-}" ]; then
   DEPLOY_PASSWORD="$(read_env_var DEPLOY_PASSWORD)"
 fi
 
+if is_non_interactive_deploy && [ -z "${DEPLOY_PASSWORD:-}" ]; then
+  err "DEPLOY_PASSWORD is required for non-interactive deploy (CI/GitHub Actions)."
+  err "Add it as a GitHub repository secret or in local .env."
+  exit 1
+fi
+
 USE_SSHPASS=false
+SSH_COMMON_OPTS=()
 if [ -n "${DEPLOY_PASSWORD:-}" ]; then
   if ! command -v sshpass >/dev/null 2>&1; then
-    err "DEPLOY_PASSWORD is set but sshpass is not installed (e.g. brew install hudochenkov/sshpass/sshpass)."
+    err "DEPLOY_PASSWORD is set but sshpass is not installed."
+    err "Local macOS: brew install hudochenkov/sshpass/sshpass"
+    err "GitHub Actions: apt-get install sshpass (see .github/workflows/deploy.yml)."
     exit 1
   fi
   export SSHPASS="$DEPLOY_PASSWORD"
   USE_SSHPASS=true
+  SSH_COMMON_OPTS=(-o StrictHostKeyChecking=accept-new)
 fi
 
 ssh_wrap() {
   if [ "$USE_SSHPASS" = true ]; then
-    sshpass -e ssh "$@"
+    sshpass -e ssh "${SSH_COMMON_OPTS[@]}" "$@"
   else
     ssh "$@"
   fi
@@ -108,7 +122,7 @@ trap close_ssh_master EXIT
 ssh_cmd() { ssh_wrap -S "$SSH_CONTROL_PATH" "$@"; }
 RSYNC_RSH="ssh -S ${SSH_CONTROL_PATH}"
 if [ "$USE_SSHPASS" = true ]; then
-  RSYNC_RSH="sshpass -e ssh -S ${SSH_CONTROL_PATH}"
+  RSYNC_RSH="sshpass -e ssh -S ${SSH_CONTROL_PATH} -o StrictHostKeyChecking=accept-new"
 fi
 
 ssh_cmd "$SSH_TARGET" "mkdir -p '${REMOTE_APP_DIR}'"
@@ -141,7 +155,13 @@ REMOTE_ENV=(
 if [ -n "${DEPLOY_PASSWORD:-}" ]; then
   REMOTE_ENV+=("DEPLOY_PASSWORD=$(printf '%q' "$DEPLOY_PASSWORD")")
 fi
-ssh_cmd -tt "$SSH_TARGET" \
+
+REMOTE_SSH_FLAGS=()
+if [ "$USE_SSHPASS" = false ]; then
+  REMOTE_SSH_FLAGS=(-tt)
+fi
+
+ssh_cmd "${REMOTE_SSH_FLAGS[@]}" "$SSH_TARGET" \
   "${REMOTE_ENV[*]} bash $(printf '%q' "$REMOTE_SCRIPT")"
 
 ok "Deploy complete."
