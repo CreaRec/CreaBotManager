@@ -1,22 +1,16 @@
 import type { Telegraf } from "telegraf";
-import type { BotManager } from "../services/bot-manager";
+import { ZodError } from "zod";
 import {
   formatActionResult,
   formatBotAdded,
-  formatBotList,
   formatBotRemoved,
   formatDetailedStatus,
   formatLogs,
   unknownBotMessage,
 } from "../services/bot-manager";
-import {
-  AccessControl,
-  formatAccessDenied,
-  formatAdminOnly,
-} from "../services/access-control";
-import { RegistryError, type BotRegistryStore } from "../services/bot-registry";
-import type { UserPermissionsStore } from "../services/user-permissions";
-import { ZodError } from "zod";
+import { formatAccessDenied, formatAdminOnly } from "../services/access-control";
+import { RegistryError } from "../services/bot-registry";
+import { showBotList, type MenuContext } from "./menu-handlers";
 
 function extractArg(text: string): string {
   const parts = text.trim().split(/\s+/);
@@ -49,25 +43,11 @@ function formatRegistryError(err: unknown): string {
   return "❌ Failed to update bot registry.";
 }
 
-function canUseBot(access: AccessControl, userId: number | undefined, botId: string): userId is number {
-  return userId !== undefined && access.canAccessBot(userId, botId);
-}
+export function registerManagementCommands(bot: Telegraf, deps: MenuContext): void {
+  const { manager, botStore: store, permissionsStore, access } = deps;
 
-export function registerManagementCommands(
-  bot: Telegraf,
-  manager: BotManager,
-  store: BotRegistryStore,
-  permissionsStore: UserPermissionsStore,
-  access: AccessControl,
-): void {
   bot.command("bots", async (ctx) => {
-    const userId = ctx.from?.id;
-    if (userId === undefined) return;
-
-    const statuses = await manager.listStatuses();
-    const visible = access.filterStatuses(userId, statuses);
-    const isAdmin = access.isAdmin(userId);
-    await ctx.reply(formatBotList(visible, { isAdmin }), { parse_mode: "Markdown" });
+    await showBotList(ctx, deps);
   });
 
   bot.command("botadd", async (ctx) => {
@@ -124,10 +104,10 @@ export function registerManagementCommands(
     const userId = ctx.from?.id;
     const id = extractArg(ctx.message.text);
     if (!id) {
-      await ctx.reply("Usage: /botstart <id>");
+      await ctx.reply("Usage: /botstart <id> — или откройте /menu");
       return;
     }
-    if (!canUseBot(access, userId, id)) {
+    if (!access.canAccessBot(userId ?? -1, id)) {
       await ctx.reply(formatAccessDenied(id), { parse_mode: "Markdown" });
       return;
     }
@@ -146,7 +126,7 @@ export function registerManagementCommands(
       await ctx.reply("Usage: /botstop <id>");
       return;
     }
-    if (!canUseBot(access, userId, id)) {
+    if (!access.canAccessBot(userId ?? -1, id)) {
       await ctx.reply(formatAccessDenied(id), { parse_mode: "Markdown" });
       return;
     }
@@ -165,7 +145,7 @@ export function registerManagementCommands(
       await ctx.reply("Usage: /botrestart <id>");
       return;
     }
-    if (!canUseBot(access, userId, id)) {
+    if (!access.canAccessBot(userId ?? -1, id)) {
       await ctx.reply(formatAccessDenied(id), { parse_mode: "Markdown" });
       return;
     }
@@ -184,7 +164,7 @@ export function registerManagementCommands(
       await ctx.reply("Usage: /botstatus <id>");
       return;
     }
-    if (!canUseBot(access, userId, id)) {
+    if (!access.canAccessBot(userId ?? -1, id)) {
       await ctx.reply(formatAccessDenied(id), { parse_mode: "Markdown" });
       return;
     }
@@ -203,7 +183,7 @@ export function registerManagementCommands(
       await ctx.reply("Usage: /botlogs <id> [lines]");
       return;
     }
-    if (!canUseBot(access, userId, id)) {
+    if (!access.canAccessBot(userId ?? -1, id)) {
       await ctx.reply(formatAccessDenied(id), { parse_mode: "Markdown" });
       return;
     }

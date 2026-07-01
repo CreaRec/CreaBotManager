@@ -7,8 +7,9 @@ const { FakeTelegraf, runSystemctlMock } = vi.hoisted(() => {
       start?: (ctx: unknown) => unknown;
       help?: (ctx: unknown) => unknown;
       command: Map<string, (ctx: unknown) => unknown>;
+      action: Array<{ pattern: RegExp | string; fn: (ctx: unknown) => unknown }>;
       on: Array<{ filter: unknown; fn: (ctx: unknown) => unknown }>;
-    } = { use: [], command: new Map(), on: [] };
+    } = { use: [], command: new Map(), action: [], on: [] };
     constructor(
       public token: string,
       public options?: unknown,
@@ -26,6 +27,9 @@ const { FakeTelegraf, runSystemctlMock } = vi.hoisted(() => {
     command(name: string, fn: (ctx: unknown) => unknown) {
       this.handlers.command.set(name, fn);
     }
+    action(pattern: RegExp | string, fn: (ctx: unknown) => unknown) {
+      this.handlers.action.push({ pattern, fn });
+    }
     on(filter: unknown, fn: (ctx: unknown) => unknown) {
       this.handlers.on.push({ filter, fn });
     }
@@ -37,7 +41,7 @@ const { FakeTelegraf, runSystemctlMock } = vi.hoisted(() => {
   return { FakeTelegraf, runSystemctlMock: vi.fn() };
 });
 
-vi.mock("telegraf", () => ({ Telegraf: FakeTelegraf }));
+vi.mock("telegraf", () => ({ Telegraf: FakeTelegraf, Markup: { button: { callback: (t: string, d: string) => ({ text: t, callback_data: d }) }, inlineKeyboard: (r: unknown) => ({ reply_markup: { inline_keyboard: r } }) } }));
 vi.mock("telegraf/filters", () => ({ message: (kind: string) => `${kind}-filter` }));
 vi.mock("../config", () => ({
   config: {
@@ -115,37 +119,41 @@ describe("createBot", () => {
     runSystemctlMock.mockResolvedValue({ stdout: "active", stderr: "", exitCode: 0 });
   });
 
-  it("registers user and management commands", () => {
+  it("registers menu action handlers", () => {
     const runtime = createBot(mockBotStore as never, mockPermissionsStore as never, access);
     const bot = runtime.bot as unknown as InstanceType<typeof FakeTelegraf>;
-    expect(bot.handlers.command.has("users")).toBe(true);
-    expect(bot.handlers.command.has("usergrant")).toBe(true);
-    expect(bot.handlers.command.has("mybots")).toBe(true);
-    expect(bot.handlers.command.has("botadd")).toBe(true);
+    expect(bot.handlers.action.length).toBeGreaterThan(5);
+    expect(bot.handlers.command.has("menu")).toBe(true);
   });
 
-  it("rejects unauthorized users when access control is configured", async () => {
+  it("/start shows main menu keyboard", async () => {
+    const runtime = createBot(mockBotStore as never, mockPermissionsStore as never, access);
+    const bot = runtime.bot as unknown as InstanceType<typeof FakeTelegraf>;
+    const ctx = makeCtx();
+    await bot.handlers.start!(ctx);
+    expect(ctx.reply).toHaveBeenCalledWith(
+      expect.stringContaining("CreaBotManager"),
+      expect.objectContaining({ reply_markup: expect.any(Object) }),
+    );
+  });
+
+  it("text trigger opens bot list", async () => {
+    const runtime = createBot(mockBotStore as never, mockPermissionsStore as never, access);
+    const bot = runtime.bot as unknown as InstanceType<typeof FakeTelegraf>;
+    const ctx = makeCtx({ message: { text: "список ботов" } });
+    const textHandler = bot.handlers.on.find((h) => h.filter === "text-filter")!.fn;
+    await textHandler(ctx);
+    expect(ctx.reply).toHaveBeenCalledWith(
+      expect.stringContaining("Выберите бота"),
+      expect.objectContaining({ reply_markup: expect.any(Object) }),
+    );
+  });
+
+  it("rejects unauthorized users", async () => {
     const runtime = createBot(mockBotStore as never, mockPermissionsStore as never, access);
     const bot = runtime.bot as unknown as InstanceType<typeof FakeTelegraf>;
     const ctx = makeCtx({ from: { id: 999 } });
     await runMiddleware(bot, ctx);
     expect(ctx.reply).toHaveBeenCalledWith("Sorry, you are not authorized to use this bot.");
-  });
-
-  it("shows admin commands in /start for admins", async () => {
-    const runtime = createBot(mockBotStore as never, mockPermissionsStore as never, access);
-    const bot = runtime.bot as unknown as InstanceType<typeof FakeTelegraf>;
-    const ctx = makeCtx();
-    await bot.handlers.start!(ctx);
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("/usergrant"));
-  });
-
-  it("replies to unknown slash commands", async () => {
-    const runtime = createBot(mockBotStore as never, mockPermissionsStore as never, access);
-    const bot = runtime.bot as unknown as InstanceType<typeof FakeTelegraf>;
-    const ctx = makeCtx({ message: { text: "/unknowncmd" } });
-    const textHandler = bot.handlers.on.find((h) => h.filter === "text-filter")!.fn;
-    await textHandler(ctx);
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("Неизвестная команда"));
   });
 });

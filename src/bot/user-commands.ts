@@ -1,17 +1,14 @@
 import type { Telegraf } from "telegraf";
 import { ZodError } from "zod";
 import {
-  AccessControl,
-  formatAdminOnly,
   formatMyBots,
   formatUserAdded,
   formatUserGrant,
-  formatUserList,
   formatUserRemoved,
   formatUserRevoke,
 } from "../services/access-control";
-import type { BotRegistryStore } from "../services/bot-registry";
-import { PermissionsError, type UserPermissionsStore } from "../services/user-permissions";
+import { PermissionsError } from "../services/user-permissions";
+import { showUserList, type MenuContext } from "./menu-handlers";
 
 function extractArgs(text: string): string[] {
   return text.trim().split(/\s+/).slice(1);
@@ -34,30 +31,17 @@ function formatPermissionsError(err: unknown): string {
   return "❌ Failed to update user permissions.";
 }
 
-function requireAdmin(access: AccessControl, userId: number | undefined): boolean {
-  return userId !== undefined && access.canManageUsers(userId);
-}
+export function registerUserCommands(bot: Telegraf, deps: MenuContext): void {
+  const { access, permissionsStore, botStore, adminIds } = deps;
 
-export function registerUserCommands(
-  bot: Telegraf,
-  access: AccessControl,
-  permissionsStore: UserPermissionsStore,
-  botStore: BotRegistryStore,
-  adminIds: number[],
-): void {
   bot.command("users", async (ctx) => {
-    const userId = ctx.from?.id;
-    if (!requireAdmin(access, userId)) {
-      await ctx.reply(formatAdminOnly());
-      return;
-    }
-    await ctx.reply(formatUserList(adminIds, permissionsStore.listUsers()));
+    await showUserList(ctx, deps);
   });
 
   bot.command("useradd", async (ctx) => {
     const userId = ctx.from?.id;
-    if (!requireAdmin(access, userId)) {
-      await ctx.reply(formatAdminOnly());
+    if (!access.canManageUsers(userId ?? -1)) {
+      await ctx.reply("⛔ This command is available to admins only.");
       return;
     }
 
@@ -83,15 +67,15 @@ export function registerUserCommands(
 
   bot.command("userremove", async (ctx) => {
     const userId = ctx.from?.id;
-    if (!requireAdmin(access, userId)) {
-      await ctx.reply(formatAdminOnly());
+    if (!access.canManageUsers(userId ?? -1)) {
+      await ctx.reply("⛔ This command is available to admins only.");
       return;
     }
 
     const args = extractArgs(ctx.message.text);
     const telegramIdRaw = ctx.args[0] ?? args[0];
     if (!telegramIdRaw) {
-      await ctx.reply("Usage: /userremove <telegramId>");
+      await ctx.reply("Usage: /userremove <telegramId> — или откройте /menu → Пользователи");
       return;
     }
 
@@ -107,14 +91,14 @@ export function registerUserCommands(
 
   bot.command("usergrant", async (ctx) => {
     const userId = ctx.from?.id;
-    if (!requireAdmin(access, userId)) {
-      await ctx.reply(formatAdminOnly());
+    if (!access.canManageUsers(userId ?? -1)) {
+      await ctx.reply("⛔ This command is available to admins only.");
       return;
     }
 
     const args = extractArgs(ctx.message.text);
     if (args.length < 2) {
-      await ctx.reply("Usage: /usergrant <telegramId> <botId>");
+      await ctx.reply("Usage: /usergrant <telegramId> <botId> — или /menu → Пользователи");
       return;
     }
 
@@ -134,8 +118,8 @@ export function registerUserCommands(
 
   bot.command("userrevoke", async (ctx) => {
     const userId = ctx.from?.id;
-    if (!requireAdmin(access, userId)) {
-      await ctx.reply(formatAdminOnly());
+    if (!access.canManageUsers(userId ?? -1)) {
+      await ctx.reply("⛔ This command is available to admins only.");
       return;
     }
 
