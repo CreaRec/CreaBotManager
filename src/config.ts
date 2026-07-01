@@ -6,7 +6,6 @@ loadEnv({ quiet: true });
 const schema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
   ADMIN_TELEGRAM_IDS: z.string().optional(),
-  ALLOWED_TELEGRAM_IDS: z.string().optional(),
   BOT_HANDLER_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
   MANAGED_BOTS_CONFIG: z.string().min(1).default("config/managed-bots.json"),
   USER_PERMISSIONS_CONFIG: z.string().min(1).default("config/user-permissions.json"),
@@ -56,11 +55,9 @@ function envForSchema(): Record<string, string | undefined> {
 
 function build(): AppConfig {
   const parsed = schema.parse(envForSchema());
-  const adminTelegramIds = parseIds(parsed.ADMIN_TELEGRAM_IDS);
-  const legacyAdmins = parseIds(parsed.ALLOWED_TELEGRAM_IDS);
   return {
     telegramBotToken: parsed.TELEGRAM_BOT_TOKEN,
-    adminTelegramIds: adminTelegramIds.length > 0 ? adminTelegramIds : legacyAdmins,
+    adminTelegramIds: parseIds(parsed.ADMIN_TELEGRAM_IDS),
     botHandlerTimeoutMs: parsed.BOT_HANDLER_TIMEOUT_MS,
     managedBotsConfigPath: parsed.MANAGED_BOTS_CONFIG,
     userPermissionsConfigPath: parsed.USER_PERMISSIONS_CONFIG,
