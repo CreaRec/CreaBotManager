@@ -87,9 +87,16 @@ The manager process must be allowed to run `systemctl` and `journalctl` for thos
 
 Set `USE_SUDO_FOR_SYSTEMCTL=true` in `.env` (default).
 
-### 4. Telegram commands
+### 4. Telegram interface
 
-**Bot registry (admin only):**
+**Button menus (recommended):**
+
+- `/start` or `/menu` — главное меню
+- «Боты» → выберите бота → Запуск / Стоп / Перезапуск / Статус / Логи
+- «Пользователи» (админ) → выберите оператора → выдать / забрать доступ / удалить
+- Текст «список ботов» или «пользователи» — то же меню
+
+**Text commands (for adding entries):**
 
 | Command | Action |
 |---------|--------|

@@ -6,6 +6,7 @@ import { BotManager } from "../services/bot-manager";
 import { BotRegistryStore } from "../services/bot-registry";
 import { UserPermissionsStore } from "../services/user-permissions";
 import { registerManagementCommands } from "./management-commands";
+import { registerMenuHandlers, showBotList, showMainMenu, showUserList, type MenuContext } from "./menu-handlers";
 import { registerUserCommands } from "./user-commands";
 
 export interface BotRuntime {
@@ -13,6 +14,14 @@ export interface BotRuntime {
   botStore: BotRegistryStore;
   permissionsStore: UserPermissionsStore;
   access: AccessControl;
+}
+
+const BOT_LIST_TRIGGERS = ["боты", "список ботов", "list bots", "bots"];
+const USER_LIST_TRIGGERS = ["пользователи", "список пользователей", "users"];
+
+function matchesTrigger(text: string, triggers: string[]): boolean {
+  const normalized = text.trim().toLowerCase();
+  return triggers.some((t) => normalized === t || normalized.includes(t));
 }
 
 export function createBot(
@@ -25,6 +34,14 @@ export function createBot(
     journalctlPath: config.journalctlPath,
     useSudo: config.useSudoForSystemctl,
   });
+
+  const menuDeps: MenuContext = {
+    manager,
+    botStore,
+    permissionsStore,
+    access,
+    adminIds: config.adminTelegramIds,
+  };
 
   const bot = new Telegraf(config.telegramBotToken, {
     handlerTimeout: config.botHandlerTimeoutMs,
@@ -52,70 +69,36 @@ export function createBot(
   });
 
   bot.start(async (ctx) => {
-    const isAdmin = access.isAdmin(ctx.from?.id ?? -1);
-    const lines = [
-      "CreaBotManager — управление Telegram-ботами на сервере.",
-      "",
-      "Боты:",
-      "/bots — список доступных ботов",
-      "/mybots — мои назначенные боты",
-      "/botstart <id> — запустить",
-      "/botstop <id> — остановить",
-      "/botrestart <id> — перезапустить",
-      "/botstatus <id> — статус systemd",
-      "/botlogs <id> [строк] — логи",
-    ];
-
-    if (isAdmin) {
-      lines.push(
-        "",
-        "Админ — реестр ботов:",
-        "/botadd <id> <service> [name]",
-        "/botremove <id>",
-        "",
-        "Админ — пользователи:",
-        "/users — список пользователей",
-        "/useradd <telegramId> [label]",
-        "/userremove <telegramId>",
-        "/usergrant <telegramId> <botId>",
-        "/userrevoke <telegramId> <botId>",
-      );
-    }
-
-    lines.push("", "Зарегистрировано ботов: " + botStore.getRegistry().bots.length);
-    await ctx.reply(lines.join("\n"));
+    await showMainMenu(ctx, access);
   });
 
   bot.help(async (ctx) => {
-    const isAdmin = access.isAdmin(ctx.from?.id ?? -1);
-    const lines = [
-      "Боты:",
-      "/bots, /mybots",
-      "/botstart <id>, /botstop <id>, /botrestart <id>",
-      "/botstatus <id>, /botlogs <id> [lines]",
-    ];
-    if (isAdmin) {
-      lines.push(
-        "",
-        "Админ:",
-        "/botadd <id> <service> [name], /botremove <id>",
-        "/users, /useradd, /userremove",
-        "/usergrant <telegramId> <botId>, /userrevoke <telegramId> <botId>",
-      );
-    }
-    await ctx.reply(lines.join("\n"));
+    await showMainMenu(ctx, access);
   });
 
-  registerManagementCommands(bot, manager, botStore, permissionsStore, access);
-  registerUserCommands(bot, access, permissionsStore, botStore, config.adminTelegramIds);
+  bot.command("menu", async (ctx) => {
+    await showMainMenu(ctx, access);
+  });
+
+  registerMenuHandlers(bot, menuDeps);
+  registerManagementCommands(bot, menuDeps);
+  registerUserCommands(bot, menuDeps);
 
   bot.on(message("text"), async (ctx) => {
     const text = ctx.message.text;
-    if (!text.startsWith("/")) {
-      await ctx.reply("Используйте /help для списка команд.");
+    if (text.startsWith("/")) {
+      await ctx.reply("Неизвестная команда. Используйте /menu или /help.");
       return;
     }
-    await ctx.reply("Неизвестная команда. Используйте /help.");
+    if (matchesTrigger(text, BOT_LIST_TRIGGERS)) {
+      await showBotList(ctx, menuDeps);
+      return;
+    }
+    if (access.isAdmin(ctx.from?.id ?? -1) && matchesTrigger(text, USER_LIST_TRIGGERS)) {
+      await showUserList(ctx, menuDeps);
+      return;
+    }
+    await ctx.reply("Используйте /menu — главное меню с кнопками.");
   });
 
   return { bot, botStore, permissionsStore, access };

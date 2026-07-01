@@ -3,6 +3,7 @@ import { AccessControl } from "../services/access-control";
 import { parseBotRegistryJson } from "../services/bot-registry";
 import { UserPermissionsStore, parseUserPermissionsJson } from "../services/user-permissions";
 import { registerManagementCommands } from "./management-commands";
+import { showBotList } from "./menu-handlers";
 
 describe("management-commands", () => {
   const registry = parseBotRegistryJson(
@@ -20,16 +21,40 @@ describe("management-commands", () => {
     parseUserPermissionsJson(JSON.stringify({ users: [{ telegramId: 222, botIds: ["trip-planner"] }] })),
   );
   const access = new AccessControl([111], permissionsStore);
+  const manager = {
+    listStatuses: vi.fn().mockResolvedValue([
+      { bot: registry.bots[0], state: "active", raw: "active" },
+    ]),
+    runAction: vi.fn(),
+  };
+
+  const deps = {
+    manager: manager as never,
+    botStore: store as never,
+    permissionsStore,
+    access,
+    adminIds: [111],
+  };
+
+  it("/bots opens interactive bot list", async () => {
+    const handlers = new Map<string, (ctx: unknown) => Promise<void>>();
+    registerManagementCommands({ command: (n, fn) => handlers.set(n, fn) } as never, deps);
+
+    const ctx = {
+      from: { id: 111 },
+      reply: vi.fn().mockResolvedValue(undefined),
+    };
+    await handlers.get("bots")!(ctx);
+    expect(manager.listStatuses).toHaveBeenCalled();
+    expect(ctx.reply).toHaveBeenCalledWith(
+      expect.stringContaining("Выберите бота"),
+      expect.objectContaining({ reply_markup: expect.any(Object) }),
+    );
+  });
 
   it("denies botadd for non-admin", async () => {
     const handlers = new Map<string, (ctx: unknown) => Promise<void>>();
-    registerManagementCommands(
-      { command: (n, fn) => handlers.set(n, fn) } as never,
-      { listStatuses: vi.fn() } as never,
-      store as never,
-      permissionsStore,
-      access,
-    );
+    registerManagementCommands({ command: (n, fn) => handlers.set(n, fn) } as never, deps);
 
     const ctx = {
       from: { id: 222 },
@@ -39,48 +64,26 @@ describe("management-commands", () => {
     await handlers.get("botadd")!(ctx);
     expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("admins only"));
   });
+});
 
-  it("denies service control without bot access", async () => {
-    const handlers = new Map<string, (ctx: unknown) => Promise<void>>();
-    registerManagementCommands(
-      { command: (n, fn) => handlers.set(n, fn) } as never,
-      { runAction: vi.fn(), listStatuses: vi.fn() } as never,
-      store as never,
-      permissionsStore,
-      access,
+describe("showBotList", () => {
+  it("shows empty message for operator without bots", async () => {
+    const permissionsStore = new UserPermissionsStore(
+      "config/user-permissions.json",
+      parseUserPermissionsJson(JSON.stringify({ users: [{ telegramId: 222, botIds: [] }] })),
     );
-
+    const access = new AccessControl([111], permissionsStore);
     const ctx = {
       from: { id: 222 },
-      message: { text: "/botstart weather" },
       reply: vi.fn().mockResolvedValue(undefined),
     };
-    await handlers.get("botstart")!(ctx);
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("No access"), { parse_mode: "Markdown" });
-  });
-
-  it("allows operator to start assigned bot", async () => {
-    const handlers = new Map<string, (ctx: unknown) => Promise<void>>();
-    const runAction = vi.fn().mockResolvedValue({
-      bot: registry.bots[0],
-      action: "start",
-      command: { stdout: "ok", stderr: "", exitCode: 0 },
-      success: true,
+    await showBotList(ctx, {
+      manager: { listStatuses: vi.fn().mockResolvedValue([]) } as never,
+      botStore: { getRegistry: () => ({ bots: [] }) } as never,
+      permissionsStore,
+      access,
+      adminIds: [111],
     });
-    registerManagementCommands(
-      { command: (n, fn) => handlers.set(n, fn) } as never,
-      { runAction, listStatuses: vi.fn() } as never,
-      store as never,
-      permissionsStore,
-      access,
-    );
-
-    const ctx = {
-      from: { id: 222 },
-      message: { text: "/botstart trip-planner" },
-      reply: vi.fn().mockResolvedValue(undefined),
-    };
-    await handlers.get("botstart")!(ctx);
-    expect(runAction).toHaveBeenCalledWith("trip-planner", "start");
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("не назначено"), expect.any(Object));
   });
 });
