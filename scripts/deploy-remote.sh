@@ -52,6 +52,13 @@ sudo systemctl daemon-reload
 sudo systemctl enable "${SERVICE_NAME}"
 sudo systemctl restart "${SERVICE_NAME}"
 
+echo "[remote] configuring TimeoutStopSec for manager and registered bots..."
+TIMEOUT_STOP_SEC="${TIMEOUT_STOP_SEC:-10}" \
+REMOTE_APP_DIR="$REMOTE_APP_DIR" \
+MANAGED_BOTS_CONFIG="$REMOTE_APP_DIR/data/managed-bots.json" \
+SERVICE_NAME="$SERVICE_NAME" \
+bash scripts/configure-managed-bot-timeouts.sh
+
 echo "[remote] service status:"
 sudo systemctl --no-pager --full status "${SERVICE_NAME}" || true
 echo "[remote] recent logs:"

@@ -11,6 +11,7 @@ EnvironmentFile=__APP_DIR__/.env
 ExecStart=/usr/bin/env node dist/index.js
 Restart=always
 RestartSec=5
+TimeoutStopSec=10
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=telegram-bot-manager

@@ -42,7 +42,7 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string) => {
     console.log(`[shutdown] received ${signal}, stopping...`);
-    bot.stop(signal);
+    await bot.stop(signal);
     process.exit(0);
   };
   process.once("SIGINT", () => void shutdown("SIGINT"));
