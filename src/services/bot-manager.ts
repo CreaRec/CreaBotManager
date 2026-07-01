@@ -1,3 +1,4 @@
+import type { BotRegistryStore } from "./bot-registry";
 import type { BotRegistry, ManagedBot } from "./bot-registry";
 import {
   fetchServiceLogs,
@@ -25,21 +26,25 @@ export interface ActionResult {
 
 export class BotManager {
   constructor(
-    private readonly registry: BotRegistry,
+    private readonly store: BotRegistryStore,
     private readonly systemd: SystemdConfig,
   ) {}
 
+  private registry(): BotRegistry {
+    return this.store.getRegistry();
+  }
+
   listBots(): ManagedBot[] {
-    return this.registry.bots;
+    return this.registry().bots;
   }
 
   getBot(id: string): ManagedBot | undefined {
-    return this.registry.byId.get(id);
+    return this.registry().byId.get(id);
   }
 
   resolveBotId(input: string): ManagedBot | undefined {
     const normalized = input.trim().toLowerCase();
-    return this.registry.byId.get(normalized);
+    return this.registry().byId.get(normalized);
   }
 
   async getStatus(id: string): Promise<BotStatus | undefined> {
@@ -53,7 +58,7 @@ export class BotManager {
 
   async listStatuses(): Promise<BotStatus[]> {
     const statuses: BotStatus[] = [];
-    for (const bot of this.registry.bots) {
+    for (const bot of this.registry().bots) {
       const result = await runSystemctl(this.systemd, "is-active", bot.serviceName);
       statuses.push({
         bot,
@@ -92,14 +97,26 @@ export class BotManager {
 
 export function formatBotList(statuses: BotStatus[]): string {
   if (statuses.length === 0) {
-    return "No bots registered.";
+    return "No bots registered.\n\nAdd one: /botadd <id> <service> [name]";
   }
 
   const lines = ["Registered bots:", ""];
   for (const { bot, state } of statuses) {
     lines.push(`${formatStatusEmoji(state)} ${bot.name} (\`${bot.id}\`) — ${state}`);
   }
-  lines.push("", "Commands:", "/botstart <id> — start service", "/botstop <id> — stop service", "/botrestart <id> — restart service", "/botstatus <id> — detailed status", "/botlogs <id> [lines] — recent logs");
+  lines.push(
+    "",
+    "Service control:",
+    "/botstart <id> — start",
+    "/botstop <id> — stop",
+    "/botrestart <id> — restart",
+    "/botstatus <id> — status",
+    "/botlogs <id> [lines] — logs",
+    "",
+    "Registry:",
+    "/botadd <id> <service> [name] — register bot",
+    "/botremove <id> — unregister bot",
+  );
   return lines.join("\n");
 }
 
@@ -124,6 +141,17 @@ export function formatLogs(bot: ManagedBot, command: CommandResult): string {
 }
 
 export function unknownBotMessage(id: string, registry: BotRegistry): string {
+  if (registry.bots.length === 0) {
+    return `Unknown bot id: \`${id}\`.\nNo bots registered yet. Use /botadd.`;
+  }
   const known = registry.bots.map((b) => b.id).join(", ");
   return `Unknown bot id: \`${id}\`.\nRegistered ids: ${known}`;
+}
+
+export function formatBotAdded(bot: ManagedBot): string {
+  return `✅ Bot registered:\n• id: \`${bot.id}\`\n• name: ${bot.name}\n• service: ${bot.serviceName}`;
+}
+
+export function formatBotRemoved(bot: ManagedBot): string {
+  return `✅ Bot removed: \`${bot.id}\` (${bot.serviceName})`;
 }

@@ -2,12 +2,11 @@ import { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
 import { config } from "../config";
 import { BotManager } from "../services/bot-manager";
-import { loadBotRegistry } from "../services/bot-registry";
+import { BotRegistryStore } from "../services/bot-registry";
 import { registerManagementCommands } from "./management-commands";
 
-export function createBot(): Telegraf {
-  const registry = loadBotRegistry(config.managedBotsConfigPath);
-  const manager = new BotManager(registry, {
+export function createBot(store: BotRegistryStore): Telegraf {
+  const manager = new BotManager(store, {
     systemctlPath: config.systemctlPath,
     journalctlPath: config.journalctlPath,
     useSudo: config.useSudoForSystemctl,
@@ -44,15 +43,19 @@ export function createBot(): Telegraf {
       [
         "CreaBotManager — управление Telegram-ботами на сервере.",
         "",
-        "Команды:",
-        "/bots — список зарегистрированных ботов и их статус",
-        "/botstart <id> — запустить сервис",
-        "/botstop <id> — остановить сервис",
-        "/botrestart <id> — перезапустить сервис",
-        "/botstatus <id> — подробный статус systemd",
-        "/botlogs <id> [строк] — последние логи",
+        "Реестр:",
+        "/botadd <id> <service> [name] — добавить бота",
+        "/botremove <id> — удалить из реестра",
+        "/bots — список ботов и статус",
         "",
-        "Зарегистрировано ботов: " + registry.bots.length,
+        "Сервисы:",
+        "/botstart <id> — запустить",
+        "/botstop <id> — остановить",
+        "/botrestart <id> — перезапустить",
+        "/botstatus <id> — статус systemd",
+        "/botlogs <id> [строк] — логи",
+        "",
+        "Зарегистрировано ботов: " + store.getRegistry().bots.length,
       ].join("\n"),
     );
   });
@@ -60,20 +63,22 @@ export function createBot(): Telegraf {
   bot.help(async (ctx) => {
     await ctx.reply(
       [
-        "Доступные команды:",
-        "/bots — список ботов",
-        "/botstart <id> — start",
-        "/botstop <id> — stop",
-        "/botrestart <id> — restart",
-        "/botstatus <id> — status",
-        "/botlogs <id> [lines] — logs",
+        "Реестр ботов:",
+        "/botadd <id> <service> [name]",
+        "/botremove <id>",
+        "/bots",
         "",
-        "Боты настраиваются в config/managed-bots.json",
+        "Управление сервисами:",
+        "/botstart <id>",
+        "/botstop <id>",
+        "/botrestart <id>",
+        "/botstatus <id>",
+        "/botlogs <id> [lines]",
       ].join("\n"),
     );
   });
 
-  registerManagementCommands(bot, manager, registry);
+  registerManagementCommands(bot, manager, store);
 
   bot.on(message("text"), async (ctx) => {
     const text = ctx.message.text;

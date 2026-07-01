@@ -2,12 +2,15 @@ import type { Telegraf } from "telegraf";
 import type { BotManager } from "../services/bot-manager";
 import {
   formatActionResult,
+  formatBotAdded,
   formatBotList,
+  formatBotRemoved,
   formatDetailedStatus,
   formatLogs,
   unknownBotMessage,
 } from "../services/bot-manager";
-import type { BotRegistry } from "../services/bot-registry";
+import { RegistryError, type BotRegistryStore } from "../services/bot-registry";
+import { ZodError } from "zod";
 
 function extractArg(text: string): string {
   const parts = text.trim().split(/\s+/);
@@ -21,14 +24,66 @@ function extractArgAndNumber(text: string): { id: string; lines: number } {
   return { id, lines: Number.isFinite(lines) ? lines : 30 };
 }
 
-export function registerManagementCommands(
-  bot: Telegraf,
-  manager: BotManager,
-  registry: BotRegistry,
-): void {
+function parseBotAddArgs(text: string): { id: string; serviceName: string; name: string } | null {
+  const parts = text.trim().split(/\s+/);
+  if (parts.length < 3) return null;
+  const id = parts[1] ?? "";
+  const serviceName = parts[2] ?? "";
+  const name = parts.slice(3).join(" ").trim() || id;
+  return { id, serviceName, name };
+}
+
+function formatRegistryError(err: unknown): string {
+  if (err instanceof RegistryError) return `❌ ${err.message}`;
+  if (err instanceof ZodError) {
+    const detail = err.issues.map((issue) => issue.message).join("; ");
+    return `❌ Invalid bot data: ${detail}`;
+  }
+  if (err instanceof Error) return `❌ ${err.message}`;
+  return "❌ Failed to update bot registry.";
+}
+
+export function registerManagementCommands(bot: Telegraf, manager: BotManager, store: BotRegistryStore): void {
   bot.command("bots", async (ctx) => {
     const statuses = await manager.listStatuses();
     await ctx.reply(formatBotList(statuses), { parse_mode: "Markdown" });
+  });
+
+  bot.command("botadd", async (ctx) => {
+    const args = parseBotAddArgs(ctx.message.text);
+    if (!args) {
+      await ctx.reply(
+        [
+          "Usage: /botadd <id> <service> [name]",
+          "",
+          "Example:",
+          "/botadd trip-planner telegram-trip-planner Crea Trip Planner",
+        ].join("\n"),
+      );
+      return;
+    }
+
+    try {
+      const botEntry = store.addBot(args);
+      await ctx.reply(formatBotAdded(botEntry), { parse_mode: "Markdown" });
+    } catch (err) {
+      await ctx.reply(formatRegistryError(err));
+    }
+  });
+
+  bot.command("botremove", async (ctx) => {
+    const id = extractArg(ctx.message.text);
+    if (!id) {
+      await ctx.reply("Usage: /botremove <id>");
+      return;
+    }
+
+    try {
+      const botEntry = store.removeBot(id);
+      await ctx.reply(formatBotRemoved(botEntry), { parse_mode: "Markdown" });
+    } catch (err) {
+      await ctx.reply(formatRegistryError(err));
+    }
   });
 
   bot.command("botstart", async (ctx) => {
@@ -39,7 +94,7 @@ export function registerManagementCommands(
     }
     const result = await manager.runAction(id, "start");
     if (!result) {
-      await ctx.reply(unknownBotMessage(id, registry), { parse_mode: "Markdown" });
+      await ctx.reply(unknownBotMessage(id, store.getRegistry()), { parse_mode: "Markdown" });
       return;
     }
     await ctx.reply(formatActionResult(result), { parse_mode: "Markdown" });
@@ -53,7 +108,7 @@ export function registerManagementCommands(
     }
     const result = await manager.runAction(id, "stop");
     if (!result) {
-      await ctx.reply(unknownBotMessage(id, registry), { parse_mode: "Markdown" });
+      await ctx.reply(unknownBotMessage(id, store.getRegistry()), { parse_mode: "Markdown" });
       return;
     }
     await ctx.reply(formatActionResult(result), { parse_mode: "Markdown" });
@@ -67,7 +122,7 @@ export function registerManagementCommands(
     }
     const result = await manager.runAction(id, "restart");
     if (!result) {
-      await ctx.reply(unknownBotMessage(id, registry), { parse_mode: "Markdown" });
+      await ctx.reply(unknownBotMessage(id, store.getRegistry()), { parse_mode: "Markdown" });
       return;
     }
     await ctx.reply(formatActionResult(result), { parse_mode: "Markdown" });
@@ -81,7 +136,7 @@ export function registerManagementCommands(
     }
     const result = await manager.getDetailedStatus(id);
     if (!result) {
-      await ctx.reply(unknownBotMessage(id, registry), { parse_mode: "Markdown" });
+      await ctx.reply(unknownBotMessage(id, store.getRegistry()), { parse_mode: "Markdown" });
       return;
     }
     await ctx.reply(formatDetailedStatus(result.bot, result.command));
@@ -95,7 +150,7 @@ export function registerManagementCommands(
     }
     const result = await manager.getLogs(id, lines);
     if (!result) {
-      await ctx.reply(unknownBotMessage(id, registry), { parse_mode: "Markdown" });
+      await ctx.reply(unknownBotMessage(id, store.getRegistry()), { parse_mode: "Markdown" });
       return;
     }
     await ctx.reply(formatLogs(result.bot, result.command));

@@ -44,23 +44,20 @@ CreaBotManager controls other Telegram bots running as **systemd services** on D
 
 ### 1. Register bots
 
-Edit `config/managed-bots.json` on the server (copy from `config/managed-bots.example.json`):
+**Via Telegram (recommended):**
 
-```json
-{
-  "bots": [
-    {
-      "id": "trip-planner",
-      "name": "Crea Trip Planner",
-      "serviceName": "telegram-trip-planner"
-    }
-  ]
-}
+```
+/botadd trip-planner telegram-trip-planner Crea Trip Planner
+/botremove trip-planner
 ```
 
-- `id` — short name used in Telegram commands (`/botstart trip-planner`)
-- `name` — display name in `/bots` list
-- `serviceName` — exact systemd unit name (without `.service`)
+- `id` — short name for commands (`/botstart trip-planner`), lowercase with hyphens
+- `service` — exact systemd unit name (without `.service`)
+- `name` — optional display name (defaults to `id`)
+
+Changes are saved to `config/managed-bots.json` immediately — no bot restart required.
+
+You can also edit `config/managed-bots.json` manually (see `config/managed-bots.example.json`).
 
 ### 2. Server permissions
 
@@ -72,6 +69,8 @@ Set `USE_SUDO_FOR_SYSTEMCTL=true` in `.env` (default).
 
 | Command | Action |
 |---------|--------|
+| `/botadd <id> <service> [name]` | Register a bot (saved to JSON) |
+| `/botremove <id>` | Remove bot from registry |
 | `/bots` | List registered bots and live status |
 | `/botstart <id>` | `systemctl start` |
 | `/botstop <id>` | `systemctl stop` |
