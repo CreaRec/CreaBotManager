@@ -101,6 +101,16 @@ sudo -n systemctl start telegram-trip-planner
 
 All three must work without a password prompt. Install rules from `deploy/sudoers-crea-bot-manager.example` (replace `USER` with `crearec`).
 
+**Slow stop/restart (~90 seconds):** default systemd `TimeoutStopSec` is 90s. Deploy runs `scripts/configure-managed-bot-timeouts.sh` to set `TimeoutStopSec=10` for the manager and every bot in `data/managed-bots.json`. On an existing server:
+
+```bash
+cd ~/crea-bot-manager
+npm run build
+sudo ./scripts/configure-managed-bot-timeouts.sh
+```
+
+Check: `systemctl show telegram-flibusta -p TimeoutStopUSec` → `10s`. Template for new bots: `deploy/telegram-managed-bot.service.example`.
+
 ### 4. Telegram interface
 
 **Reply keyboard (always visible at the bottom):**
@@ -153,7 +163,9 @@ scripts/
   deploy-remote.sh       # Server build + systemd (called by deploy.sh)
   setup-runtime-data.sh  # data/ dir, migration, permissions (called by deploy-remote)
 deploy/
-  telegram-bot-manager.service  # systemd unit template
+  telegram-bot-manager.service       # systemd unit template
+  telegram-managed-bot.service.example
+  systemd-timeout-stop.conf          # drop-in snippet (TimeoutStopSec=10)
   sudoers-crea-bot-manager.example
 ```
 
