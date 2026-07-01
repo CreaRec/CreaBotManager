@@ -94,6 +94,7 @@ export function createBot(
   });
 
   bot.command("menu", async (ctx) => {
+    await sendWelcome(ctx, access);
     await showMainMenu(ctx, access);
   });
 
