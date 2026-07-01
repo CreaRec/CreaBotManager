@@ -1,16 +1,13 @@
 import type { Telegraf } from "telegraf";
 import { ZodError } from "zod";
 import {
-  formatActionResult,
   formatBotAdded,
   formatBotRemoved,
-  formatDetailedStatus,
-  formatLogs,
-  unknownBotMessage,
 } from "../services/bot-manager";
 import { formatAccessDenied, formatAdminOnly } from "../services/access-control";
 import { RegistryError } from "../services/bot-registry";
 import { showBotList, type MenuContext } from "./menu-handlers";
+import { executeServiceAction } from "./service-actions";
 
 function extractArg(text: string): string {
   const parts = text.trim().split(/\s+/);
@@ -111,12 +108,9 @@ export function registerManagementCommands(bot: Telegraf, deps: MenuContext): vo
       await ctx.reply(formatAccessDenied(id), { parse_mode: "Markdown" });
       return;
     }
-    const result = await manager.runAction(id, "start");
-    if (!result) {
-      await ctx.reply(unknownBotMessage(id, store.getRegistry()), { parse_mode: "Markdown" });
-      return;
-    }
-    await ctx.reply(formatActionResult(result), { parse_mode: "Markdown" });
+    await executeServiceAction(ctx, manager, id, "start", {
+      isAdmin: access.isAdmin(userId ?? -1),
+    });
   });
 
   bot.command("botstop", async (ctx) => {
@@ -130,12 +124,9 @@ export function registerManagementCommands(bot: Telegraf, deps: MenuContext): vo
       await ctx.reply(formatAccessDenied(id), { parse_mode: "Markdown" });
       return;
     }
-    const result = await manager.runAction(id, "stop");
-    if (!result) {
-      await ctx.reply(unknownBotMessage(id, store.getRegistry()), { parse_mode: "Markdown" });
-      return;
-    }
-    await ctx.reply(formatActionResult(result), { parse_mode: "Markdown" });
+    await executeServiceAction(ctx, manager, id, "stop", {
+      isAdmin: access.isAdmin(userId ?? -1),
+    });
   });
 
   bot.command("botrestart", async (ctx) => {
@@ -149,12 +140,9 @@ export function registerManagementCommands(bot: Telegraf, deps: MenuContext): vo
       await ctx.reply(formatAccessDenied(id), { parse_mode: "Markdown" });
       return;
     }
-    const result = await manager.runAction(id, "restart");
-    if (!result) {
-      await ctx.reply(unknownBotMessage(id, store.getRegistry()), { parse_mode: "Markdown" });
-      return;
-    }
-    await ctx.reply(formatActionResult(result), { parse_mode: "Markdown" });
+    await executeServiceAction(ctx, manager, id, "restart", {
+      isAdmin: access.isAdmin(userId ?? -1),
+    });
   });
 
   bot.command("botstatus", async (ctx) => {
@@ -168,12 +156,7 @@ export function registerManagementCommands(bot: Telegraf, deps: MenuContext): vo
       await ctx.reply(formatAccessDenied(id), { parse_mode: "Markdown" });
       return;
     }
-    const result = await manager.getDetailedStatus(id);
-    if (!result) {
-      await ctx.reply(unknownBotMessage(id, store.getRegistry()), { parse_mode: "Markdown" });
-      return;
-    }
-    await ctx.reply(formatDetailedStatus(result.bot, result.command));
+    await executeServiceAction(ctx, manager, id, "status");
   });
 
   bot.command("botlogs", async (ctx) => {
@@ -187,11 +170,6 @@ export function registerManagementCommands(bot: Telegraf, deps: MenuContext): vo
       await ctx.reply(formatAccessDenied(id), { parse_mode: "Markdown" });
       return;
     }
-    const result = await manager.getLogs(id, lines);
-    if (!result) {
-      await ctx.reply(unknownBotMessage(id, store.getRegistry()), { parse_mode: "Markdown" });
-      return;
-    }
-    await ctx.reply(formatLogs(result.bot, result.command));
+    await executeServiceAction(ctx, manager, id, "logs", { logLines: lines });
   });
 }
