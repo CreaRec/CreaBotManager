@@ -66,7 +66,8 @@ export function registerManagementCommands(
 
     const statuses = await manager.listStatuses();
     const visible = access.filterStatuses(userId, statuses);
-    await ctx.reply(formatBotList(visible), { parse_mode: "Markdown" });
+    const isAdmin = access.isAdmin(userId);
+    await ctx.reply(formatBotList(visible, { isAdmin }), { parse_mode: "Markdown" });
   });
 
   bot.command("botadd", async (ctx) => {

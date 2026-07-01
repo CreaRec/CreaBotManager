@@ -61,31 +61,25 @@ You can also edit `config/managed-bots.json` manually (see `config/managed-bots.
 
 ### 2. User access (per-bot permissions)
 
-Set your admin Telegram id in `.env`:
+In `.env` specify **only your** Telegram id as admin (one person):
 
 ```
 ADMIN_TELEGRAM_IDS=123456789
 ```
 
-Admins manage operators and their bot access entirely via Telegram:
+Do **not** list operators here — add them via Telegram:
 
 ```
 /useradd 987654321 Alice
 /usergrant 987654321 trip-planner
-/users
-/mybots
 ```
 
-| Command | Who | Action |
-|---------|-----|--------|
-| `/users` | Admin | List admins and operators |
-| `/useradd <telegramId> [label]` | Admin | Add operator |
-| `/userremove <telegramId>` | Admin | Remove operator |
-| `/usergrant <telegramId> <botId>` | Admin | Grant bot access |
-| `/userrevoke <telegramId> <botId>` | Admin | Revoke bot access |
-| `/mybots` | Anyone authorized | Show bots you can manage |
+| Role | How configured | Can do |
+|------|----------------|--------|
+| **Admin** | `ADMIN_TELEGRAM_IDS` in `.env` | Add/remove bots, manage users, control all bots |
+| **Operator** | `/useradd` + `/usergrant` | Start/stop/restart **only assigned** bots |
 
-Operators see only their assigned bots in `/bots` and can run start/stop/restart only on those bots. Permissions are saved to `config/user-permissions.json`.
+Operators **cannot** run `/botadd` or `/botremove`.
 
 ### 3. Server permissions
 

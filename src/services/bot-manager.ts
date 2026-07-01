@@ -95,9 +95,13 @@ export class BotManager {
   }
 }
 
-export function formatBotList(statuses: BotStatus[]): string {
+export function formatBotList(statuses: BotStatus[], options?: { isAdmin?: boolean }): string {
+  const isAdmin = options?.isAdmin ?? false;
+
   if (statuses.length === 0) {
-    return "No bots registered.\n\nAdd one: /botadd <id> <service> [name]";
+    return isAdmin
+      ? "No bots registered.\n\nAdd one: /botadd <id> <service> [name]"
+      : "No bots assigned to you yet. Ask an admin to run /usergrant.";
   }
 
   const lines = ["Registered bots:", ""];
@@ -112,11 +116,12 @@ export function formatBotList(statuses: BotStatus[]): string {
     "/botrestart <id> — restart",
     "/botstatus <id> — status",
     "/botlogs <id> [lines] — logs",
-    "",
-    "Registry:",
-    "/botadd <id> <service> [name] — register bot",
-    "/botremove <id> — unregister bot",
   );
+
+  if (isAdmin) {
+    lines.push("", "Registry (admin only):", "/botadd <id> <service> [name]", "/botremove <id>");
+  }
+
   return lines.join("\n");
 }
 
