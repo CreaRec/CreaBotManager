@@ -20,6 +20,10 @@ export function isMessageNotModifiedError(err: unknown): boolean {
   return msg.includes("message is not modified");
 }
 
+export function isSudoDenied(output: string): boolean {
+  return formatSudoHint(output) !== null;
+}
+
 export function formatSudoHint(output: string): string | null {
   const lower = output.toLowerCase();
   if (

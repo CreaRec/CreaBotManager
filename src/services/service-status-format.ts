@@ -1,5 +1,6 @@
 import type { CommandResult } from "./systemd";
 import { formatStatusEmoji, parseIsActive, type ServiceState } from "./systemd";
+import { formatSudoHint, isSudoDenied } from "../utils/telegram-format";
 
 const ACTIVE_STATE_LABELS: Record<string, string> = {
   active: "работает",
@@ -81,6 +82,7 @@ export interface HumanStatusInput {
   state: ServiceState;
   props: Record<string, string>;
   command?: CommandResult;
+  limitedDetails?: boolean;
 }
 
 export function formatHumanServiceStatus(input: HumanStatusInput): string {
@@ -114,9 +116,14 @@ export function formatHumanServiceStatus(input: HumanStatusInput): string {
     lines.push(`• результат: ${props.Result}`);
   }
 
-  const raw = command?.stderr || command?.stdout || "";
-  if (raw.toLowerCase().includes("password is required") || raw.toLowerCase().includes("not allowed")) {
-    lines.push("", "⚠️ Нет доступа к systemctl. Проверьте sudoers на сервере.");
+  if (input.limitedDetails) {
+    lines.push(
+      "",
+      "ℹ️ Краткий статус. Для PID и памяти добавьте в sudoers: `/bin/systemctl show telegram-*`",
+    );
+  } else if (state === "unknown" && command) {
+    const hint = formatSudoHint(command.stderr || command.stdout);
+    if (hint) lines.push("", `⚠️ ${hint}`);
   }
 
   const text = lines.join("\n");
