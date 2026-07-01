@@ -87,6 +87,20 @@ The manager process must be allowed to run `systemctl` and `journalctl` for thos
 
 Set `USE_SUDO_FOR_SYSTEMCTL=true` in `.env` (default).
 
+**Troubleshooting status and control:**
+
+- `unknown` or ❓ — `systemctl is-active` returned an unexpected value (often missing sudo).
+- Stop/restart fails but status shows `active` — reading status may work without sudo; **start/stop/restart** need the full sudoers file (all `start`, `stop`, `restart`, `is-active`, `status`, `journalctl` lines).
+- On the server as user `crearec`:
+
+```bash
+sudo -n systemctl is-active telegram-trip-planner
+sudo -n systemctl stop telegram-trip-planner
+sudo -n systemctl start telegram-trip-planner
+```
+
+All three must work without a password prompt. Install rules from `deploy/sudoers-crea-bot-manager.example` (replace `USER` with `crearec`).
+
 ### 4. Telegram interface
 
 **Reply keyboard (always visible at the bottom):**

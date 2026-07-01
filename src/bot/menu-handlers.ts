@@ -29,6 +29,7 @@ import {
   userRemoveConfirmKeyboard,
 } from "./keyboards";
 import type { BotManager } from "../services/bot-manager";
+import { isMessageNotModifiedError } from "../utils/telegram-format";
 
 export interface MenuContext {
   manager: BotManager;
@@ -40,23 +41,30 @@ export interface MenuContext {
 
 type MenuCtx = Context;
 
+async function editOrReply(ctx: MenuCtx, text: string, opts?: object): Promise<void> {
+  if (ctx.callbackQuery && "message" in ctx.callbackQuery && ctx.callbackQuery.message) {
+    try {
+      await ctx.editMessageText(text, opts);
+    } catch (err) {
+      if (!isMessageNotModifiedError(err)) {
+        await ctx.reply(text, opts);
+      }
+    }
+    return;
+  }
+  await ctx.reply(text, opts);
+}
+
 async function respond(ctx: MenuCtx, text: string, keyboard: ReturnType<typeof mainMenuKeyboard>): Promise<void> {
   const opts = { parse_mode: "Markdown" as const, ...keyboard };
-  if (ctx.callbackQuery && "message" in ctx.callbackQuery && ctx.callbackQuery.message) {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(text, opts);
-  } else {
-    await ctx.reply(text, opts);
-  }
+  if (ctx.callbackQuery) await ctx.answerCbQuery();
+  await editOrReply(ctx, text, opts);
 }
 
 async function respondPlain(ctx: MenuCtx, text: string): Promise<void> {
-  if (ctx.callbackQuery && "message" in ctx.callbackQuery && ctx.callbackQuery.message) {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(text, { parse_mode: "Markdown" });
-  } else {
-    await ctx.reply(text, { parse_mode: "Markdown" });
-  }
+  const opts = { parse_mode: "Markdown" as const };
+  if (ctx.callbackQuery) await ctx.answerCbQuery();
+  await editOrReply(ctx, text, opts);
 }
 
 export async function showMainMenu(ctx: MenuCtx, access: AccessControl): Promise<void> {
