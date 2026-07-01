@@ -1,0 +1,10 @@
+{
+  "users": [
+    {
+      "telegramId": 222,
+      "botIds": [
+        "trip-planner"
+      ]
+    }
+  ]
+}

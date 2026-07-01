@@ -15,7 +15,7 @@ Telegram  <->  Bot (Node + TypeScript + Telegraf)
 
 ```bash
 cp .env.example .env
-# Fill in TELEGRAM_BOT_TOKEN and ALLOWED_TELEGRAM_IDS
+# Fill in TELEGRAM_BOT_TOKEN and ADMIN_TELEGRAM_IDS
 
 chmod +x scripts/start-local.sh
 ./scripts/start-local.sh
@@ -59,26 +59,61 @@ Changes are saved to `config/managed-bots.json` immediately — no bot restart r
 
 You can also edit `config/managed-bots.json` manually (see `config/managed-bots.example.json`).
 
-### 2. Server permissions
+### 2. User access (per-bot permissions)
+
+Set your admin Telegram id in `.env`:
+
+```
+ADMIN_TELEGRAM_IDS=123456789
+```
+
+Admins manage operators and their bot access entirely via Telegram:
+
+```
+/useradd 987654321 Alice
+/usergrant 987654321 trip-planner
+/users
+/mybots
+```
+
+| Command | Who | Action |
+|---------|-----|--------|
+| `/users` | Admin | List admins and operators |
+| `/useradd <telegramId> [label]` | Admin | Add operator |
+| `/userremove <telegramId>` | Admin | Remove operator |
+| `/usergrant <telegramId> <botId>` | Admin | Grant bot access |
+| `/userrevoke <telegramId> <botId>` | Admin | Revoke bot access |
+| `/mybots` | Anyone authorized | Show bots you can manage |
+
+Operators see only their assigned bots in `/bots` and can run start/stop/restart only on those bots. Permissions are saved to `config/user-permissions.json`.
+
+### 3. Server permissions
 
 The manager process must be allowed to run `systemctl` and `journalctl` for those units. See `deploy/sudoers-crea-bot-manager.example` — install via `visudo` on the server.
 
 Set `USE_SUDO_FOR_SYSTEMCTL=true` in `.env` (default).
 
-### 3. Telegram commands
+### 4. Telegram commands
+
+**Bot registry (admin only):**
 
 | Command | Action |
 |---------|--------|
-| `/botadd <id> <service> [name]` | Register a bot (saved to JSON) |
+| `/botadd <id> <service> [name]` | Register a bot |
 | `/botremove <id>` | Remove bot from registry |
-| `/bots` | List registered bots and live status |
+
+**Service control (admin or assigned operator):**
+
+| Command | Action |
+|---------|--------|
+| `/bots` | List accessible bots and live status |
 | `/botstart <id>` | `systemctl start` |
 | `/botstop <id>` | `systemctl stop` |
 | `/botrestart <id>` | `systemctl restart` |
 | `/botstatus <id>` | `systemctl status` |
 | `/botlogs <id> [lines]` | `journalctl` tail (max 200 lines) |
 
-Only user IDs from `ALLOWED_TELEGRAM_IDS` can run commands. Service names are taken from the registry only — arbitrary shell input is never executed.
+Admins have full access. Operators are limited to bots granted via `/usergrant`. Service names come from the registry only — arbitrary shell input is never executed.
 
 ## Project layout
 
@@ -89,8 +124,10 @@ src/
   bot/bot.ts     # Telegraf handlers
   services/      # Bot registry, systemd control
 config/
-  managed-bots.json          # Your registered bots (deployed with the app)
-  managed-bots.example.json  # Example registry
+  managed-bots.json              # Registered bots
+  managed-bots.example.json
+  user-permissions.json          # Per-user bot access
+  user-permissions.example.json
 scripts/
   start-local.sh # Local dev bootstrap
   deploy.sh      # Local → remote deploy (runs tests first)

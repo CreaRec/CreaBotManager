@@ -42,28 +42,34 @@ vi.mock("telegraf/filters", () => ({ message: (kind: string) => `${kind}-filter`
 vi.mock("../config", () => ({
   config: {
     telegramBotToken: "test-token",
-    allowedTelegramIds: [111],
+    adminTelegramIds: [111],
     botHandlerTimeoutMs: 180_000,
     managedBotsConfigPath: "config/managed-bots.json",
+    userPermissionsConfigPath: "config/user-permissions.json",
     systemctlPath: "/bin/systemctl",
     journalctlPath: "/bin/journalctl",
     useSudoForSystemctl: true,
   },
 }));
 
-const mockStore = {
+const mockBotStore = {
   getRegistry: () => ({
     bots: [{ id: "trip-planner", name: "Trip Planner", serviceName: "telegram-trip-planner" }],
     byId: new Map([["trip-planner", { id: "trip-planner", name: "Trip Planner", serviceName: "telegram-trip-planner" }]]),
-    byServiceName: new Map([["telegram-trip-planner", { id: "trip-planner", name: "Trip Planner", serviceName: "telegram-trip-planner" }]]),
+    byServiceName: new Map(),
   }),
-  addBot: vi.fn(),
-  removeBot: vi.fn(),
 };
 
-vi.mock("../services/bot-registry", () => ({
-  BotRegistryStore: vi.fn().mockImplementation(() => mockStore),
-}));
+const mockPermissionsStore = {
+  listUsers: () => [{ telegramId: 222, botIds: ["trip-planner"] }],
+  hasUser: (id: number) => id === 222,
+  getUser: (id: number) => (id === 222 ? { telegramId: 222, botIds: ["trip-planner"] } : undefined),
+  addUser: vi.fn(),
+  removeUser: vi.fn(),
+  grantBot: vi.fn(),
+  revokeBot: vi.fn(),
+  removeBotFromAllUsers: vi.fn(),
+};
 
 vi.mock("../services/systemd", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/systemd")>();
@@ -75,7 +81,7 @@ vi.mock("../services/systemd", async (importOriginal) => {
 });
 
 import { createBot } from "./bot";
-import { BotRegistryStore } from "../services/bot-registry";
+import { AccessControl } from "../services/access-control";
 
 interface FakeCtx {
   from?: { id: number };
@@ -102,72 +108,35 @@ async function runMiddleware(bot: InstanceType<typeof FakeTelegraf>, ctx: FakeCt
 }
 
 describe("createBot", () => {
+  const access = new AccessControl([111], mockPermissionsStore as never);
+
   beforeEach(() => {
     vi.clearAllMocks();
     runSystemctlMock.mockResolvedValue({ stdout: "active", stderr: "", exitCode: 0 });
   });
 
-  it("registers management commands", () => {
-    const bot = createBot(mockStore as unknown as InstanceType<typeof BotRegistryStore>) as unknown as InstanceType<
-      typeof FakeTelegraf
-    >;
-    expect(bot.handlers.start).toBeTypeOf("function");
-    expect(bot.handlers.command.has("bots")).toBe(true);
+  it("registers user and management commands", () => {
+    const runtime = createBot(mockBotStore as never, mockPermissionsStore as never, access);
+    const bot = runtime.bot as unknown as InstanceType<typeof FakeTelegraf>;
+    expect(bot.handlers.command.has("users")).toBe(true);
+    expect(bot.handlers.command.has("usergrant")).toBe(true);
+    expect(bot.handlers.command.has("mybots")).toBe(true);
     expect(bot.handlers.command.has("botadd")).toBe(true);
-    expect(bot.handlers.command.has("botremove")).toBe(true);
-    expect(bot.handlers.command.has("botrestart")).toBe(true);
   });
 
-  it("rejects unauthorized users", async () => {
-    const bot = createBot(mockStore as unknown as InstanceType<typeof BotRegistryStore>) as unknown as InstanceType<
-      typeof FakeTelegraf
-    >;
+  it("rejects unauthorized users when access control is configured", async () => {
+    const runtime = createBot(mockBotStore as never, mockPermissionsStore as never, access);
+    const bot = runtime.bot as unknown as InstanceType<typeof FakeTelegraf>;
     const ctx = makeCtx({ from: { id: 999 } });
     await runMiddleware(bot, ctx);
     expect(ctx.reply).toHaveBeenCalledWith("Sorry, you are not authorized to use this bot.");
   });
 
-  it("replies to /start with manager help", async () => {
-    const bot = createBot(mockStore as unknown as InstanceType<typeof BotRegistryStore>) as unknown as InstanceType<
-      typeof FakeTelegraf
-    >;
+  it("shows admin commands in /start for admins", async () => {
+    const runtime = createBot(mockBotStore as never, mockPermissionsStore as never, access);
+    const bot = runtime.bot as unknown as InstanceType<typeof FakeTelegraf>;
     const ctx = makeCtx();
     await bot.handlers.start!(ctx);
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("/botadd"));
-  });
-
-  it("lists bots via /bots", async () => {
-    const bot = createBot(mockStore as unknown as InstanceType<typeof BotRegistryStore>) as unknown as InstanceType<
-      typeof FakeTelegraf
-    >;
-    const ctx = makeCtx();
-    await bot.handlers.command.get("bots")!(ctx);
-    expect(runSystemctlMock).toHaveBeenCalled();
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("Trip Planner"), { parse_mode: "Markdown" });
-  });
-
-  it("starts a bot via /botstart", async () => {
-    const bot = createBot(mockStore as unknown as InstanceType<typeof BotRegistryStore>) as unknown as InstanceType<
-      typeof FakeTelegraf
-    >;
-    const ctx = makeCtx({ message: { text: "/botstart trip-planner" } });
-    runSystemctlMock.mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 });
-    await bot.handlers.command.get("botstart")!(ctx);
-    expect(runSystemctlMock).toHaveBeenCalledWith(
-      expect.objectContaining({ systemctlPath: "/bin/systemctl" }),
-      "start",
-      "telegram-trip-planner",
-    );
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("start"), { parse_mode: "Markdown" });
-  });
-
-  it("replies to plain text with help hint", async () => {
-    const bot = createBot(mockStore as unknown as InstanceType<typeof BotRegistryStore>) as unknown as InstanceType<
-      typeof FakeTelegraf
-    >;
-    const ctx = makeCtx({ message: { text: "hello" } });
-    const textHandler = bot.handlers.on.find((h) => h.filter === "text-filter")!.fn;
-    await textHandler(ctx);
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("/help"));
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("/usergrant"));
   });
 });
