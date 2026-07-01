@@ -64,16 +64,16 @@ export class BotManager {
   }
 
   async listStatuses(): Promise<BotStatus[]> {
-    const statuses: BotStatus[] = [];
-    for (const bot of this.registry().bots) {
-      const result = await runSystemctl(this.systemd, "is-active", bot.serviceName);
-      statuses.push({
-        bot,
-        state: parseIsActive(result.stdout || result.stderr),
-        raw: result.stdout || result.stderr,
-      });
-    }
-    return statuses;
+    return Promise.all(
+      this.registry().bots.map(async (bot) => {
+        const result = await runSystemctl(this.systemd, "is-active", bot.serviceName);
+        return {
+          bot,
+          state: parseIsActive(result.stdout || result.stderr),
+          raw: result.stdout || result.stderr,
+        };
+      }),
+    );
   }
 
   async runAction(id: string, action: ServiceAction): Promise<ActionResult | undefined> {

@@ -8,6 +8,12 @@ export function wrapCodeBlock(text: string): string {
   return `\`\`\`\n${safe}\n\`\`\``;
 }
 
+export function isCallbackQueryExpiredError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return msg.includes("query is too old") || msg.includes("response timeout expired");
+}
+
 export function isMessageNotModifiedError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();

@@ -14,6 +14,7 @@ import {
   showUserList,
   type MenuContext,
 } from "./menu-handlers";
+import { isCallbackQueryExpiredError } from "../utils/telegram-format";
 import { parseReplyAction, replyMainKeyboard, welcomeMessage } from "./reply-keyboard";
 import { registerUserCommands } from "./user-commands";
 
@@ -64,6 +65,10 @@ export function createBot(
   });
 
   bot.catch((err, ctx) => {
+    if (isCallbackQueryExpiredError(err)) {
+      console.warn("[bot] callback query expired:", err instanceof Error ? err.message : err);
+      return;
+    }
     console.error("[bot] unhandled error:", err);
     const reply =
       err instanceof Error && err.name === "TimeoutError"
