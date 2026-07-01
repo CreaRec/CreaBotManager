@@ -124,9 +124,10 @@ data/                            # Runtime data (preserved across deploys)
   managed-bots.json
   user-permissions.json
 scripts/
-  start-local.sh # Local dev bootstrap
-  deploy.sh      # Local → remote deploy (runs tests first)
-  deploy-remote.sh
+  start-local.sh         # Local dev bootstrap
+  deploy.sh              # Local → remote deploy (runs tests first)
+  deploy-remote.sh       # Server build + systemd (called by deploy.sh)
+  setup-runtime-data.sh  # data/ dir, migration, permissions (called by deploy-remote)
 deploy/
   telegram-bot-manager.service  # systemd unit template
   sudoers-crea-bot-manager.example
@@ -146,6 +147,13 @@ chmod +x scripts/deploy.sh
 ```
 
 Deploy syncs files with `rsync`, runs `npm run build` on the server, and restarts the `telegram-bot-manager` systemd service.
+
+**Runtime data is preserved across deploys:**
+
+- `data/managed-bots.json` — registered bots (from `/botadd`)
+- `data/user-permissions.json` — operators and access (from `/useradd`, `/usergrant`)
+
+The `data/` directory is **not** overwritten by `rsync`. On each deploy, `scripts/setup-runtime-data.sh` runs automatically: creates `data/`, migrates legacy `config/*.json` if needed, sets file permissions, and updates `.env` paths to `data/` when missing.
 
 Override defaults via environment variables: `SERVER_HOST`, `SSH_USER`, `REMOTE_APP_DIR`, `SERVICE_NAME`, `DEPLOY_PASSWORD`.
 

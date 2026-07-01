@@ -10,8 +10,9 @@ set -euo pipefail
 
 cd "$REMOTE_APP_DIR"
 
-mkdir -p data
-chmod u+rwx data 2>/dev/null || true
+# shellcheck source=scripts/setup-runtime-data.sh
+. scripts/setup-runtime-data.sh
+setup_runtime_data
 
 start_sudo_keepalive() {
   while true; do
