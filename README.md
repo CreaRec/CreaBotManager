@@ -193,6 +193,56 @@ The `data/` directory is **not** overwritten by `rsync`. On each deploy, `script
 
 Override defaults via environment variables: `SERVER_HOST`, `SSH_USER`, `REMOTE_APP_DIR`, `SERVICE_NAME`, `DEPLOY_PASSWORD`.
 
+## GitHub Actions CI/CD
+
+Merging into `main` triggers an automatic deploy to the production server via [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml).
+
+**On every push and pull request:** the `test` job runs `npm ci` and `npm test`.
+
+**On push to `main` only:** the `deploy` job runs after tests pass. GitHub Actions sets `CI=true` on the runner; `scripts/deploy.sh` forwards `CI`/`GITHUB_ACTIONS` to the remote script and skips forced TTY (`-tt`) when `DEPLOY_PASSWORD` is unset. The workflow then:
+
+1. Writes the deploy SSH private key from GitHub Secrets
+2. Opens an SSH ControlMaster socket authenticated with that key
+3. Calls `./scripts/deploy.sh --remote`, which reuses the existing socket for rsync and remote build/restart
+
+Required GitHub Secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Purpose |
+|--------|---------|
+| `DEPLOY_SSH_KEY` | Private deploy key (matching the public key in server `authorized_keys`) |
+| `DEPLOY_HOST` | Server hostname, for example `crearec.app` |
+| `DEPLOY_USER` | SSH user, for example `crearec` |
+
+**Server prerequisites for CI deploy** (one-time setup):
+
+- Public deploy key in `~/.ssh/authorized_keys` for the deploy user
+- Passwordless sudo for deploy commands. **The sudoers username must match `DEPLOY_USER` in GitHub Secrets exactly** (for example `crearec`).
+
+  On the server, as a user with sudo access, run:
+
+  ```sh
+  DEPLOY_USER=crearec   # must match GitHub secret DEPLOY_USER
+  command -v cp mkdir tee systemctl journalctl
+
+  sudo tee "/etc/sudoers.d/${DEPLOY_USER}-deploy" > /dev/null <<EOF
+  ${DEPLOY_USER} ALL=(ALL) NOPASSWD: /bin/cp, /usr/bin/cp, /bin/mkdir, /usr/bin/mkdir, /usr/bin/tee, /bin/systemctl, /usr/bin/systemctl, /usr/bin/journalctl
+  EOF
+  sudo chmod 440 "/etc/sudoers.d/${DEPLOY_USER}-deploy"
+  sudo visudo -c -f "/etc/sudoers.d/${DEPLOY_USER}-deploy"
+  ```
+
+  Then **as the deploy user** (not root), verify no password is asked:
+
+  ```sh
+  sudo -n systemctl --version
+  sudo -n cp --version
+  sudo -n systemctl status telegram-bot-manager
+  ```
+
+- Node.js and `.env` already configured on the server
+
+`DEPLOY_PASSWORD` is not used in CI. The workflow never overwrites `data/managed-bots.json`, `data/user-permissions.json`, or `.env` on the server.
+
 ## Extending the template
 
 - Add handlers in `src/bot/bot.ts`

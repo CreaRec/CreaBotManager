@@ -14,9 +14,20 @@ cd "$REMOTE_APP_DIR"
 . scripts/setup-runtime-data.sh
 setup_runtime_data
 
+# Probe passwordless sudo with commands allowed by deploy sudoers.
+sudo_probe() {
+  sudo -n systemctl --version >/dev/null 2>&1 || \
+    sudo -n cp --version >/dev/null 2>&1
+}
+
+is_interactive_deploy() {
+  [ -t 0 ] && [ -t 1 ] && \
+    [ "${CI:-}" != true ] && [ "${GITHUB_ACTIONS:-}" != true ]
+}
+
 start_sudo_keepalive() {
   while true; do
-    sudo -n true || exit
+    sudo_probe || exit
     sleep 50
     kill -0 "$$" || exit
   done 2>/dev/null &
@@ -24,14 +35,25 @@ start_sudo_keepalive() {
   trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null' EXIT
 }
 
-if ! sudo -n true 2>/dev/null; then
+if ! sudo_probe; then
   if [ -n "${DEPLOY_PASSWORD:-}" ]; then
     printf '%s\n' "$DEPLOY_PASSWORD" | sudo -S -v
-  else
+    start_sudo_keepalive
+  elif is_interactive_deploy; then
     echo "[remote] sudo required for systemd setup (enter password once)..."
     sudo -v
+    start_sudo_keepalive
+  else
+    echo "[remote] ERROR: passwordless sudo is required for non-interactive deploy (CI)." >&2
+    echo "[remote] Running as: $(whoami) (expected deploy user: ${DEPLOY_USER})" >&2
+    echo "[remote] sudo -n systemctl --version:" >&2
+    sudo -n systemctl --version 2>&1 >&2 || true
+    echo "[remote] sudo -n cp --version:" >&2
+    sudo -n cp --version 2>&1 >&2 || true
+    echo "[remote] Fix: create /etc/sudoers.d/${DEPLOY_USER}-deploy with NOPASSWD for cp, mkdir, tee, systemctl, journalctl." >&2
+    echo "[remote] The username in sudoers must match DEPLOY_USER exactly." >&2
+    exit 1
   fi
-  start_sudo_keepalive
 fi
 
 echo "[remote] installing dependencies..."
