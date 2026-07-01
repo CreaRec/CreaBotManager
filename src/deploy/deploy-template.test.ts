@@ -55,4 +55,17 @@ describe("deploy templates", () => {
     expect(workflow).toMatch(/\.\/scripts\/deploy\.sh --remote/);
     expect(workflow).toMatch(/refs\/heads\/main/);
   });
+
+  it("configure-managed-bot-timeouts.sh uses systemctl set-property only", async () => {
+    const scriptPath = path.join(
+      repoRoot,
+      "scripts",
+      "configure-managed-bot-timeouts.sh",
+    );
+    const script = await readFile(scriptPath, "utf8");
+
+    expect(script).toMatch(/systemctl set-property/);
+    expect(script).not.toMatch(/sudo mkdir/);
+    expect(script).not.toMatch(/sudo tee/);
+  });
 });

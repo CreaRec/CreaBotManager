@@ -109,7 +109,7 @@ npm run build
 sudo ./scripts/configure-managed-bot-timeouts.sh
 ```
 
-Check: `systemctl show telegram-flibusta -p TimeoutStopUSec` → `10s`. Template for new bots: `deploy/telegram-managed-bot.service.example`.
+Check: `systemctl show telegram-flibusta -p TimeoutStopUSec` → `10s`. Deploy sets this via `systemctl set-property`; template for manual drop-ins: `deploy/systemd-timeout-stop.conf`.
 
 ### 4. Telegram interface
 
@@ -222,10 +222,10 @@ Required GitHub Secrets (Settings → Secrets and variables → Actions):
 
   ```sh
   DEPLOY_USER=crearec   # must match GitHub secret DEPLOY_USER
-  command -v cp mkdir tee systemctl journalctl
+  command -v cp systemctl journalctl
 
   sudo tee "/etc/sudoers.d/${DEPLOY_USER}-deploy" > /dev/null <<EOF
-  ${DEPLOY_USER} ALL=(ALL) NOPASSWD: /bin/cp, /usr/bin/cp, /bin/mkdir, /usr/bin/mkdir, /usr/bin/tee, /bin/systemctl, /usr/bin/systemctl, /usr/bin/journalctl
+  ${DEPLOY_USER} ALL=(ALL) NOPASSWD: /bin/cp, /usr/bin/cp, /bin/systemctl, /usr/bin/systemctl, /usr/bin/journalctl
   EOF
   sudo chmod 440 "/etc/sudoers.d/${DEPLOY_USER}-deploy"
   sudo visudo -c -f "/etc/sudoers.d/${DEPLOY_USER}-deploy"

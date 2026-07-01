@@ -50,7 +50,7 @@ if ! sudo_probe; then
     sudo -n systemctl --version 2>&1 >&2 || true
     echo "[remote] sudo -n cp --version:" >&2
     sudo -n cp --version 2>&1 >&2 || true
-    echo "[remote] Fix: create /etc/sudoers.d/${DEPLOY_USER}-deploy with NOPASSWD for cp, mkdir, tee, systemctl, journalctl." >&2
+    echo "[remote] Fix: create /etc/sudoers.d/${DEPLOY_USER}-deploy with NOPASSWD for cp, systemctl, journalctl." >&2
     echo "[remote] The username in sudoers must match DEPLOY_USER exactly." >&2
     exit 1
   fi

@@ -18,13 +18,6 @@ TIMEOUT_STOP_SEC="${TIMEOUT_STOP_SEC:-10}"
 APP_DIR="${REMOTE_APP_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 MANAGED_BOTS_CONFIG="${MANAGED_BOTS_CONFIG:-${APP_DIR}/data/managed-bots.json}"
 SERVICE_NAME="${SERVICE_NAME:-telegram-bot-manager}"
-DROPIN_NAME="crea-timeout.conf"
-TEMPLATE="${APP_DIR}/deploy/systemd-timeout-stop.conf"
-
-if [ ! -f "$TEMPLATE" ]; then
-  echo "[systemd] missing template: $TEMPLATE" >&2
-  exit 1
-fi
 
 if ! command -v node >/dev/null; then
   echo "[systemd] node is required" >&2
@@ -47,12 +40,8 @@ collect_service_units() {
 
 install_timeout_dropin() {
   local unit="$1"
-  local dropin_dir="/etc/systemd/system/${unit}.service.d"
-  local dropin_file="${dropin_dir}/${DROPIN_NAME}"
-
-  sudo mkdir -p "$dropin_dir"
-  sudo sed "s/^TimeoutStopSec=.*/TimeoutStopSec=${TIMEOUT_STOP_SEC}/" "$TEMPLATE" | sudo tee "$dropin_file" > /dev/null
-  echo "[systemd] ${unit}: installed ${dropin_file} (TimeoutStopSec=${TIMEOUT_STOP_SEC})"
+  sudo systemctl set-property "${unit}.service" "TimeoutStopSec=${TIMEOUT_STOP_SEC}"
+  echo "[systemd] ${unit}: set TimeoutStopSec=${TIMEOUT_STOP_SEC}"
 }
 
 main() {
