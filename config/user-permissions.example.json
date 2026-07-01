@@ -1,0 +1,9 @@
+{
+  "users": [
+    {
+      "telegramId": 123456789,
+      "label": "Alice",
+      "botIds": ["trip-planner"]
+    }
+  ]
+}

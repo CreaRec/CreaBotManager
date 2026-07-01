@@ -1,25 +1,32 @@
 import { createBot } from "./bot/bot";
 import { config } from "./config";
+import { AccessControl } from "./services/access-control";
 import { BotRegistryStore } from "./services/bot-registry";
+import { UserPermissionsStore } from "./services/user-permissions";
 
 async function main(): Promise<void> {
-  if (config.allowedTelegramIds.length === 0) {
+  const botStore = new BotRegistryStore(config.managedBotsConfigPath);
+  const permissionsStore = new UserPermissionsStore(config.userPermissionsConfigPath);
+  const access = new AccessControl(config.adminTelegramIds, permissionsStore);
+
+  if (access.isOpenMode()) {
     console.warn(
-      "[startup] WARNING: ALLOWED_TELEGRAM_IDS is empty - the bot will respond to ANYONE. Set it in .env.",
+      "[startup] WARNING: ADMIN_TELEGRAM_IDS is empty and no users configured — the bot is open to EVERYONE.",
     );
+  } else if (config.adminTelegramIds.length === 0) {
+    console.warn("[startup] WARNING: ADMIN_TELEGRAM_IDS is empty — only operators from user-permissions can access.");
   }
 
-  const store = new BotRegistryStore(config.managedBotsConfigPath);
-  const registry = store.getRegistry();
+  const registry = botStore.getRegistry();
   if (registry.bots.length === 0) {
-    console.warn(
-      `[startup] No bots in ${config.managedBotsConfigPath}. Add bots via /botadd in Telegram.`,
-    );
+    console.warn(`[startup] No bots in ${config.managedBotsConfigPath}. Admins can add bots via /botadd.`);
   } else {
     console.log(`[startup] managing ${registry.bots.length} bot service(s).`);
   }
 
-  const bot = createBot(store);
+  console.log(`[startup] ${permissionsStore.listUsers().length} operator(s) in permissions file.`);
+
+  const { bot } = createBot(botStore, permissionsStore, access);
 
   const shutdown = async (signal: string) => {
     console.log(`[shutdown] received ${signal}, stopping...`);

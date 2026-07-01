@@ -1,12 +1,26 @@
 import { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
 import { config } from "../config";
+import { AccessControl } from "../services/access-control";
 import { BotManager } from "../services/bot-manager";
 import { BotRegistryStore } from "../services/bot-registry";
+import { UserPermissionsStore } from "../services/user-permissions";
 import { registerManagementCommands } from "./management-commands";
+import { registerUserCommands } from "./user-commands";
 
-export function createBot(store: BotRegistryStore): Telegraf {
-  const manager = new BotManager(store, {
+export interface BotRuntime {
+  bot: Telegraf;
+  botStore: BotRegistryStore;
+  permissionsStore: UserPermissionsStore;
+  access: AccessControl;
+}
+
+export function createBot(
+  botStore: BotRegistryStore,
+  permissionsStore: UserPermissionsStore,
+  access: AccessControl,
+): BotRuntime {
+  const manager = new BotManager(botStore, {
     systemctlPath: config.systemctlPath,
     journalctlPath: config.journalctlPath,
     useSudo: config.useSudoForSystemctl,
@@ -30,8 +44,7 @@ export function createBot(store: BotRegistryStore): Telegraf {
   bot.use(async (ctx, next) => {
     const from = ctx.from;
     if (!from) return;
-    const allowed = config.allowedTelegramIds;
-    if (allowed.length > 0 && !allowed.includes(from.id)) {
+    if (!access.isKnownUser(from.id) && !access.isOpenMode()) {
       await ctx.reply("Sorry, you are not authorized to use this bot.");
       return;
     }
@@ -39,46 +52,62 @@ export function createBot(store: BotRegistryStore): Telegraf {
   });
 
   bot.start(async (ctx) => {
-    await ctx.reply(
-      [
-        "CreaBotManager — управление Telegram-ботами на сервере.",
+    const isAdmin = access.isAdmin(ctx.from?.id ?? -1);
+    const lines = [
+      "CreaBotManager — управление Telegram-ботами на сервере.",
+      "",
+      "Боты:",
+      "/bots — список доступных ботов",
+      "/mybots — мои назначенные боты",
+      "/botstart <id> — запустить",
+      "/botstop <id> — остановить",
+      "/botrestart <id> — перезапустить",
+      "/botstatus <id> — статус systemd",
+      "/botlogs <id> [строк] — логи",
+    ];
+
+    if (isAdmin) {
+      lines.push(
         "",
-        "Реестр:",
-        "/botadd <id> <service> [name] — добавить бота",
-        "/botremove <id> — удалить из реестра",
-        "/bots — список ботов и статус",
+        "Админ — реестр ботов:",
+        "/botadd <id> <service> [name]",
+        "/botremove <id>",
         "",
-        "Сервисы:",
-        "/botstart <id> — запустить",
-        "/botstop <id> — остановить",
-        "/botrestart <id> — перезапустить",
-        "/botstatus <id> — статус systemd",
-        "/botlogs <id> [строк] — логи",
-        "",
-        "Зарегистрировано ботов: " + store.getRegistry().bots.length,
-      ].join("\n"),
-    );
+        "Админ — пользователи:",
+        "/users — список пользователей",
+        "/useradd <telegramId> [label]",
+        "/userremove <telegramId>",
+        "/usergrant <telegramId> <botId>",
+        "/userrevoke <telegramId> <botId>",
+      );
+    }
+
+    lines.push("", "Зарегистрировано ботов: " + botStore.getRegistry().bots.length);
+    await ctx.reply(lines.join("\n"));
   });
 
   bot.help(async (ctx) => {
-    await ctx.reply(
-      [
-        "Реестр ботов:",
-        "/botadd <id> <service> [name]",
-        "/botremove <id>",
-        "/bots",
+    const isAdmin = access.isAdmin(ctx.from?.id ?? -1);
+    const lines = [
+      "Боты:",
+      "/bots, /mybots",
+      "/botstart <id>, /botstop <id>, /botrestart <id>",
+      "/botstatus <id>, /botlogs <id> [lines]",
+    ];
+    if (isAdmin) {
+      lines.push(
         "",
-        "Управление сервисами:",
-        "/botstart <id>",
-        "/botstop <id>",
-        "/botrestart <id>",
-        "/botstatus <id>",
-        "/botlogs <id> [lines]",
-      ].join("\n"),
-    );
+        "Админ:",
+        "/botadd <id> <service> [name], /botremove <id>",
+        "/users, /useradd, /userremove",
+        "/usergrant <telegramId> <botId>, /userrevoke <telegramId> <botId>",
+      );
+    }
+    await ctx.reply(lines.join("\n"));
   });
 
-  registerManagementCommands(bot, manager, store);
+  registerManagementCommands(bot, manager, botStore, permissionsStore, access);
+  registerUserCommands(bot, access, permissionsStore, botStore, config.adminTelegramIds);
 
   bot.on(message("text"), async (ctx) => {
     const text = ctx.message.text;
@@ -86,5 +115,5 @@ export function createBot(store: BotRegistryStore): Telegraf {
     await ctx.reply("Используйте /help для списка команд.");
   });
 
-  return bot;
+  return { bot, botStore, permissionsStore, access };
 }
