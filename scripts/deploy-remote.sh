@@ -10,6 +10,9 @@ set -euo pipefail
 
 cd "$REMOTE_APP_DIR"
 
+mkdir -p data
+chmod u+rwx data 2>/dev/null || true
+
 start_sudo_keepalive() {
   while true; do
     sudo -n true || exit

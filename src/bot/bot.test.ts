@@ -44,8 +44,8 @@ vi.mock("../config", () => ({
     telegramBotToken: "test-token",
     adminTelegramIds: [111],
     botHandlerTimeoutMs: 180_000,
-    managedBotsConfigPath: "config/managed-bots.json",
-    userPermissionsConfigPath: "config/user-permissions.json",
+    managedBotsConfigPath: "data/managed-bots.json",
+    userPermissionsConfigPath: "data/user-permissions.json",
     systemctlPath: "/bin/systemctl",
     journalctlPath: "/bin/journalctl",
     useSudoForSystemctl: true,
@@ -138,5 +138,14 @@ describe("createBot", () => {
     const ctx = makeCtx();
     await bot.handlers.start!(ctx);
     expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("/usergrant"));
+  });
+
+  it("replies to unknown slash commands", async () => {
+    const runtime = createBot(mockBotStore as never, mockPermissionsStore as never, access);
+    const bot = runtime.bot as unknown as InstanceType<typeof FakeTelegraf>;
+    const ctx = makeCtx({ message: { text: "/unknowncmd" } });
+    const textHandler = bot.handlers.on.find((h) => h.filter === "text-filter")!.fn;
+    await textHandler(ctx);
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("Неизвестная команда"));
   });
 });

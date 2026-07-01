@@ -1,6 +1,7 @@
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
+import { persistJsonFile } from "./persist-json";
 
 const userPermissionSchema = z.object({
   telegramId: z.number().int().positive(),
@@ -110,8 +111,14 @@ export class UserPermissionsStore {
       ...(label?.trim() ? { label: label.trim() } : {}),
       botIds: [],
     };
+    const previous = this.index;
     this.index = buildIndex([...this.index.users, user]);
-    this.save();
+    try {
+      this.save();
+    } catch (err) {
+      this.index = previous;
+      throw this.toPermissionsError(err);
+    }
     return user;
   }
 
@@ -120,8 +127,14 @@ export class UserPermissionsStore {
     if (!user) {
       throw new PermissionsError(`Unknown user: ${telegramId}`);
     }
+    const previous = this.index;
     this.index = buildIndex(this.index.users.filter((entry) => entry.telegramId !== telegramId));
-    this.save();
+    try {
+      this.save();
+    } catch (err) {
+      this.index = previous;
+      throw this.toPermissionsError(err);
+    }
     return user;
   }
 
@@ -167,18 +180,34 @@ export class UserPermissionsStore {
       ...user,
       botIds: user.botIds.filter((id) => id !== normalizedBotId),
     }));
+    const previous = this.index;
     this.index = buildIndex(users);
-    this.save();
+    try {
+      this.save();
+    } catch (err) {
+      this.index = previous;
+      throw this.toPermissionsError(err);
+    }
   }
 
   private replaceUser(user: UserPermission): void {
+    const previous = this.index;
     this.index = buildIndex(this.index.users.map((entry) => (entry.telegramId === user.telegramId ? user : entry)));
-    this.save();
+    try {
+      this.save();
+    } catch (err) {
+      this.index = previous;
+      throw this.toPermissionsError(err);
+    }
   }
 
   private save(): void {
-    const tmpPath = `${this.configPath}.tmp.${process.pid}`;
-    writeFileSync(tmpPath, serializeUserPermissions(this.index.users), "utf8");
-    renameSync(tmpPath, this.configPath);
+    persistJsonFile(this.configPath, serializeUserPermissions(this.index.users), "user permissions");
+  }
+
+  private toPermissionsError(err: unknown): PermissionsError {
+    if (err instanceof PermissionsError) return err;
+    const message = err instanceof Error ? err.message : String(err);
+    return new PermissionsError(message);
   }
 }

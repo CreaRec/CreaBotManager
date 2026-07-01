@@ -119,6 +119,8 @@ rsync -az --delete -e "$RSYNC_RSH" \
   --exclude 'node_modules/' \
   --exclude 'dist/' \
   --exclude 'data/' \
+  --exclude 'config/user-permissions.json' \
+  --exclude 'config/managed-bots.json' \
   --exclude '.env' \
   --exclude '.env.local' \
   ./ "${SSH_TARGET}:${REMOTE_APP_DIR}/"
