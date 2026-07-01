@@ -56,7 +56,7 @@ describe("deploy templates", () => {
     expect(workflow).toMatch(/refs\/heads\/main/);
   });
 
-  it("configure-managed-bot-timeouts.sh uses systemctl set-property only", async () => {
+  it("configure-managed-bot-timeouts.sh installs drop-ins via sudo cp only", async () => {
     const scriptPath = path.join(
       repoRoot,
       "scripts",
@@ -64,8 +64,9 @@ describe("deploy templates", () => {
     );
     const script = await readFile(scriptPath, "utf8");
 
-    expect(script).toMatch(/systemctl set-property/);
-    expect(script).not.toMatch(/sudo mkdir/);
-    expect(script).not.toMatch(/sudo tee/);
+    expect(script).toMatch(/sudo cp -r/);
+    expect(script).not.toMatch(/systemctl set-property/);
+    expect(script).not.toMatch(/sudo mkdir -p/);
+    expect(script).not.toMatch(/\bsudo tee\b/);
   });
 });

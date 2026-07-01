@@ -109,7 +109,7 @@ npm run build
 sudo ./scripts/configure-managed-bot-timeouts.sh
 ```
 
-Check: `systemctl show telegram-flibusta -p TimeoutStopUSec` → `10s`. Deploy sets this via `systemctl set-property`; template for manual drop-ins: `deploy/systemd-timeout-stop.conf`.
+Check: `systemctl show telegram-flibusta -p TimeoutStopUSec` → `10s`. Template for new bots: `deploy/telegram-managed-bot.service.example`.
 
 ### 4. Telegram interface
 
