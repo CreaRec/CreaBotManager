@@ -5,10 +5,16 @@ import {
   fetchServiceLogs,
   formatStatusEmoji,
   parseIsActive,
+  showServiceProperties,
   runSystemctl,
   type CommandResult,
   type SystemdConfig,
 } from "./systemd";
+import {
+  formatHumanServiceStatus,
+  parseSystemctlShow,
+  stateFromServiceProps,
+} from "./service-status-format";
 
 const ACTION_LABELS: Record<ServiceAction, string> = {
   start: "Запуск",
@@ -29,6 +35,13 @@ export interface ActionResult {
   action: ServiceAction;
   command: CommandResult;
   success: boolean;
+}
+
+export interface ServiceDetails {
+  bot: ManagedBot;
+  state: ReturnType<typeof parseIsActive>;
+  props: Record<string, string>;
+  command: CommandResult;
 }
 
 export class BotManager {
@@ -85,12 +98,25 @@ export class BotManager {
     return { bot, action, command, success };
   }
 
-  async getDetailedStatus(id: string): Promise<{ bot: ManagedBot; command: CommandResult } | undefined> {
+  async getDetailedStatus(id: string): Promise<ServiceDetails | undefined> {
     const bot = this.resolveBotId(id);
     if (!bot) return undefined;
 
-    const command = await runSystemctl(this.systemd, "status", bot.serviceName);
-    return { bot, command };
+    const command = await showServiceProperties(this.systemd, bot.serviceName);
+    const props = parseSystemctlShow(command.stdout || command.stderr);
+    const state = stateFromServiceProps(props);
+
+    if (Object.keys(props).length === 0) {
+      const fallback = await runSystemctl(this.systemd, "is-active", bot.serviceName);
+      return {
+        bot,
+        state: parseIsActive(fallback.stdout || fallback.stderr),
+        props: { ActiveState: fallback.stdout || fallback.stderr },
+        command: fallback.exitCode !== 0 ? fallback : command,
+      };
+    }
+
+    return { bot, state, props, command };
   }
 
   async getLogs(id: string, lines: number): Promise<{ bot: ManagedBot; command: CommandResult } | undefined> {
@@ -148,10 +174,8 @@ export function formatActionResult(result: ActionResult): string {
   return text.length > 4000 ? `${text.slice(0, 3990)}…` : text;
 }
 
-export function formatDetailedStatus(bot: ManagedBot, command: CommandResult): string {
-  const header = `Статус ${bot.name} (\`${bot.id}\`, ${bot.serviceName}):`;
-  const text = `${header}\n\n${formatCommandOutput(command, "(нет вывода)")}`;
-  return text.length > 4000 ? `${text.slice(0, 3990)}…` : text;
+export function formatDetailedStatus(details: ServiceDetails): string {
+  return formatHumanServiceStatus(details);
 }
 
 export function formatLogs(bot: ManagedBot, command: CommandResult): string {

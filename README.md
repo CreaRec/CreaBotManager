@@ -99,7 +99,7 @@ sudo -n systemctl stop telegram-trip-planner
 sudo -n systemctl start telegram-trip-planner
 ```
 
-All three must work without a password prompt. Install rules from `deploy/sudoers-crea-bot-manager.example` (replace `USER` with `crearec`).
+All three must work without a password prompt. Install rules from `deploy/sudoers-crea-bot-manager.example` (replace `USER` with `crearec`). The `show` rule is required for the human-readable **Статус** button.
 
 **Slow stop/restart (~90 seconds):** default systemd `TimeoutStopSec` is 90s. Deploy runs `scripts/configure-managed-bot-timeouts.sh` to set `TimeoutStopSec=10` for the manager and every bot in `data/managed-bots.json`. On an existing server:
 

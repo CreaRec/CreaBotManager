@@ -3,7 +3,9 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-export type SystemctlAction = "start" | "stop" | "restart" | "is-active" | "status";
+export type SystemctlAction = "start" | "stop" | "restart" | "is-active" | "status" | "show";
+
+export type ServiceState = "active" | "inactive" | "failed" | "unknown";
 
 export interface CommandResult {
   stdout: string;
@@ -52,8 +54,30 @@ export async function runSystemctl(
   cfg: SystemdConfig,
   action: SystemctlAction,
   serviceName: string,
+  extraArgs: string[] = [],
 ): Promise<CommandResult> {
-  return runCommand(cfg.systemctlPath, [action, serviceName], cfg.useSudo);
+  return runCommand(cfg.systemctlPath, [action, serviceName, ...extraArgs], cfg.useSudo);
+}
+
+const SERVICE_SHOW_PROPERTIES = [
+  "ActiveState",
+  "SubState",
+  "UnitFileState",
+  "MainPID",
+  "ActiveEnterTimestamp",
+  "InactiveEnterTimestamp",
+  "MemoryCurrent",
+  "Result",
+] as const;
+
+export async function showServiceProperties(
+  cfg: SystemdConfig,
+  serviceName: string,
+): Promise<CommandResult> {
+  return runSystemctl(cfg, "show", serviceName, [
+    `--property=${SERVICE_SHOW_PROPERTIES.join(",")}`,
+    "--no-pager",
+  ]);
 }
 
 export async function fetchServiceLogs(
@@ -69,7 +93,7 @@ export async function fetchServiceLogs(
   );
 }
 
-export function parseIsActive(stdout: string): "active" | "inactive" | "failed" | "unknown" {
+export function parseIsActive(stdout: string): ServiceState {
   const value = stdout.trim().toLowerCase();
   if (value === "active") return "active";
   if (value === "inactive" || value === "deactivating") return "inactive";
