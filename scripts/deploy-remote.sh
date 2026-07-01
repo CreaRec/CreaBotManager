@@ -26,11 +26,7 @@ start_sudo_keepalive() {
 
 if ! sudo -n true 2>/dev/null; then
   if [ -n "${DEPLOY_PASSWORD:-}" ]; then
-    echo "[remote] acquiring sudo for systemd setup..."
-    if ! printf '%s\n' "$DEPLOY_PASSWORD" | sudo -S -v; then
-      echo "[remote] sudo authentication failed (check DEPLOY_PASSWORD secret)." >&2
-      exit 1
-    fi
+    printf '%s\n' "$DEPLOY_PASSWORD" | sudo -S -v
   else
     echo "[remote] sudo required for systemd setup (enter password once)..."
     sudo -v
