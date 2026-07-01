@@ -51,12 +51,18 @@ vi.mock("../config", () => ({
   },
 }));
 
-vi.mock("../services/bot-registry", () => ({
-  loadBotRegistry: () => ({
+const mockStore = {
+  getRegistry: () => ({
     bots: [{ id: "trip-planner", name: "Trip Planner", serviceName: "telegram-trip-planner" }],
     byId: new Map([["trip-planner", { id: "trip-planner", name: "Trip Planner", serviceName: "telegram-trip-planner" }]]),
     byServiceName: new Map([["telegram-trip-planner", { id: "trip-planner", name: "Trip Planner", serviceName: "telegram-trip-planner" }]]),
   }),
+  addBot: vi.fn(),
+  removeBot: vi.fn(),
+};
+
+vi.mock("../services/bot-registry", () => ({
+  BotRegistryStore: vi.fn().mockImplementation(() => mockStore),
 }));
 
 vi.mock("../services/systemd", async (importOriginal) => {
@@ -69,6 +75,7 @@ vi.mock("../services/systemd", async (importOriginal) => {
 });
 
 import { createBot } from "./bot";
+import { BotRegistryStore } from "../services/bot-registry";
 
 interface FakeCtx {
   from?: { id: number };
@@ -101,29 +108,38 @@ describe("createBot", () => {
   });
 
   it("registers management commands", () => {
-    const bot = createBot() as unknown as InstanceType<typeof FakeTelegraf>;
+    const bot = createBot(mockStore as unknown as InstanceType<typeof BotRegistryStore>) as unknown as InstanceType<
+      typeof FakeTelegraf
+    >;
     expect(bot.handlers.start).toBeTypeOf("function");
     expect(bot.handlers.command.has("bots")).toBe(true);
-    expect(bot.handlers.command.has("botstart")).toBe(true);
+    expect(bot.handlers.command.has("botadd")).toBe(true);
+    expect(bot.handlers.command.has("botremove")).toBe(true);
     expect(bot.handlers.command.has("botrestart")).toBe(true);
   });
 
   it("rejects unauthorized users", async () => {
-    const bot = createBot() as unknown as InstanceType<typeof FakeTelegraf>;
+    const bot = createBot(mockStore as unknown as InstanceType<typeof BotRegistryStore>) as unknown as InstanceType<
+      typeof FakeTelegraf
+    >;
     const ctx = makeCtx({ from: { id: 999 } });
     await runMiddleware(bot, ctx);
     expect(ctx.reply).toHaveBeenCalledWith("Sorry, you are not authorized to use this bot.");
   });
 
   it("replies to /start with manager help", async () => {
-    const bot = createBot() as unknown as InstanceType<typeof FakeTelegraf>;
+    const bot = createBot(mockStore as unknown as InstanceType<typeof BotRegistryStore>) as unknown as InstanceType<
+      typeof FakeTelegraf
+    >;
     const ctx = makeCtx();
     await bot.handlers.start!(ctx);
-    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("CreaBotManager"));
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining("/botadd"));
   });
 
   it("lists bots via /bots", async () => {
-    const bot = createBot() as unknown as InstanceType<typeof FakeTelegraf>;
+    const bot = createBot(mockStore as unknown as InstanceType<typeof BotRegistryStore>) as unknown as InstanceType<
+      typeof FakeTelegraf
+    >;
     const ctx = makeCtx();
     await bot.handlers.command.get("bots")!(ctx);
     expect(runSystemctlMock).toHaveBeenCalled();
@@ -131,7 +147,9 @@ describe("createBot", () => {
   });
 
   it("starts a bot via /botstart", async () => {
-    const bot = createBot() as unknown as InstanceType<typeof FakeTelegraf>;
+    const bot = createBot(mockStore as unknown as InstanceType<typeof BotRegistryStore>) as unknown as InstanceType<
+      typeof FakeTelegraf
+    >;
     const ctx = makeCtx({ message: { text: "/botstart trip-planner" } });
     runSystemctlMock.mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 });
     await bot.handlers.command.get("botstart")!(ctx);
@@ -144,7 +162,9 @@ describe("createBot", () => {
   });
 
   it("replies to plain text with help hint", async () => {
-    const bot = createBot() as unknown as InstanceType<typeof FakeTelegraf>;
+    const bot = createBot(mockStore as unknown as InstanceType<typeof BotRegistryStore>) as unknown as InstanceType<
+      typeof FakeTelegraf
+    >;
     const ctx = makeCtx({ message: { text: "hello" } });
     const textHandler = bot.handlers.on.find((h) => h.filter === "text-filter")!.fn;
     await textHandler(ctx);

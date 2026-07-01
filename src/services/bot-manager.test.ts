@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { parseBotRegistryJson } from "./bot-registry";
-import { BotManager, formatActionResult, formatBotList } from "./bot-manager";
+import { BotRegistryStore, parseBotRegistryJson } from "./bot-registry";
+import { BotManager, formatBotAdded, formatBotList } from "./bot-manager";
 
 const { runSystemctlMock, fetchServiceLogsMock } = vi.hoisted(() => ({
   runSystemctlMock: vi.fn(),
@@ -25,6 +25,8 @@ const registry = parseBotRegistryJson(
   }),
 );
 
+const store = new BotRegistryStore("config/managed-bots.json", registry);
+
 const systemdCfg = {
   systemctlPath: "/bin/systemctl",
   journalctlPath: "/bin/journalctl",
@@ -42,7 +44,7 @@ describe("BotManager", () => {
       .mockResolvedValueOnce({ stdout: "active", stderr: "", exitCode: 0 })
       .mockResolvedValueOnce({ stdout: "inactive", stderr: "", exitCode: 3 });
 
-    const manager = new BotManager(registry, systemdCfg);
+    const manager = new BotManager(store, systemdCfg);
     const statuses = await manager.listStatuses();
 
     expect(statuses).toHaveLength(2);
@@ -53,7 +55,7 @@ describe("BotManager", () => {
 
   it("runs start only for known bot ids", async () => {
     runSystemctlMock.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
-    const manager = new BotManager(registry, systemdCfg);
+    const manager = new BotManager(store, systemdCfg);
 
     const ok = await manager.runAction("trip-planner", "start");
     const missing = await manager.runAction("unknown", "start");
@@ -64,23 +66,16 @@ describe("BotManager", () => {
   });
 
   it("formats list and action messages", async () => {
-    const manager = new BotManager(registry, systemdCfg);
+    const manager = new BotManager(store, systemdCfg);
     runSystemctlMock.mockResolvedValue({ stdout: "active", stderr: "", exitCode: 0 });
     const statuses = await manager.listStatuses();
     expect(formatBotList(statuses)).toContain("Trip Planner");
-    expect(
-      formatActionResult({
-        bot: registry.bots[0]!,
-        action: "restart",
-        command: { stdout: "done", stderr: "", exitCode: 0 },
-        success: true,
-      }),
-    ).toContain("restart");
+    expect(formatBotAdded(registry.bots[0]!)).toContain("trip-planner");
   });
 
   it("fetches logs for a bot", async () => {
     fetchServiceLogsMock.mockResolvedValue({ stdout: "log", stderr: "", exitCode: 0 });
-    const manager = new BotManager(registry, systemdCfg);
+    const manager = new BotManager(store, systemdCfg);
     const result = await manager.getLogs("weather", 20);
     expect(result?.command.stdout).toBe("log");
     expect(fetchServiceLogsMock).toHaveBeenCalledWith(systemdCfg, "telegram-weather", 20);
