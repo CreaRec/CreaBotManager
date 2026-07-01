@@ -67,9 +67,9 @@ export function createBot(
     console.error("[bot] unhandled error:", err);
     const reply =
       err instanceof Error && err.name === "TimeoutError"
-        ? "Request timed out. Please try again."
-        : "Something went wrong. Please try again.";
-    void ctx.reply(reply).catch((replyErr) => {
+        ? "Превышено время ожидания. Попробуйте ещё раз."
+        : "Произошла ошибка. Попробуйте ещё раз или проверьте логи: `journalctl -u telegram-bot-manager -n 50`";
+    void ctx.reply(reply, { parse_mode: "Markdown" }).catch((replyErr) => {
       console.error("[bot] failed to send error reply:", replyErr);
     });
   });

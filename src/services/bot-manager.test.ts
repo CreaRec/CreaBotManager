@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BotRegistryStore, parseBotRegistryJson } from "./bot-registry";
-import { BotManager, formatBotAdded, formatBotList } from "./bot-manager";
+import { BotManager, formatActionResult, formatBotAdded, formatBotList } from "./bot-manager";
 
 const { runSystemctlMock, fetchServiceLogsMock } = vi.hoisted(() => ({
   runSystemctlMock: vi.fn(),
@@ -71,6 +71,18 @@ describe("BotManager", () => {
     const statuses = await manager.listStatuses();
     expect(formatBotList(statuses)).toContain("Trip Planner");
     expect(formatBotAdded(registry.bots[0]!)).toContain("trip-planner");
+  });
+
+  it("formats action result with sudo hint", () => {
+    const message = formatActionResult({
+      bot: registry.bots[0]!,
+      action: "stop",
+      command: { stdout: "", stderr: "sudo: a password is required", exitCode: 1 },
+      success: false,
+    });
+    expect(message).toContain("Остановка");
+    expect(message).toContain("sudo: a password is required");
+    expect(message).toContain("sudoers");
   });
 
   it("fetches logs for a bot", async () => {

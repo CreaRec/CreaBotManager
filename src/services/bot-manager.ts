@@ -1,3 +1,4 @@
+import { formatSudoHint, wrapCodeBlock } from "../utils/telegram-format";
 import type { BotRegistryStore } from "./bot-registry";
 import type { BotRegistry, ManagedBot } from "./bot-registry";
 import {
@@ -8,6 +9,12 @@ import {
   type CommandResult,
   type SystemdConfig,
 } from "./systemd";
+
+const ACTION_LABELS: Record<ServiceAction, string> = {
+  start: "Запуск",
+  stop: "Остановка",
+  restart: "Перезапуск",
+};
 
 export type ServiceAction = "start" | "stop" | "restart";
 
@@ -125,23 +132,31 @@ export function formatBotList(statuses: BotStatus[], options?: { isAdmin?: boole
   return lines.join("\n");
 }
 
+function formatCommandOutput(command: CommandResult, emptyLabel: string): string {
+  const raw = command.stdout || command.stderr || emptyLabel;
+  const sudoHint = formatSudoHint(raw);
+  const parts = [wrapCodeBlock(raw)];
+  if (sudoHint) parts.push("", sudoHint);
+  return parts.join("\n");
+}
+
 export function formatActionResult(result: ActionResult): string {
   const emoji = result.success ? "✅" : "❌";
-  const detail = result.command.stdout || result.command.stderr || "(no output)";
-  return `${emoji} ${result.action} \`${result.bot.id}\` (${result.bot.serviceName})\n${detail}`;
+  const label = ACTION_LABELS[result.action];
+  const header = `${emoji} ${label} \`${result.bot.id}\` (${result.bot.serviceName})`;
+  const text = `${header}\n${formatCommandOutput(result.command, "(нет вывода)")}`;
+  return text.length > 4000 ? `${text.slice(0, 3990)}…` : text;
 }
 
 export function formatDetailedStatus(bot: ManagedBot, command: CommandResult): string {
-  const body = command.stdout || command.stderr || "(no output)";
-  const header = `Status for ${bot.name} (\`${bot.id}\`, ${bot.serviceName}):`;
-  const text = `${header}\n\n${body}`;
+  const header = `Статус ${bot.name} (\`${bot.id}\`, ${bot.serviceName}):`;
+  const text = `${header}\n\n${formatCommandOutput(command, "(нет вывода)")}`;
   return text.length > 4000 ? `${text.slice(0, 3990)}…` : text;
 }
 
 export function formatLogs(bot: ManagedBot, command: CommandResult): string {
-  const body = command.stdout || command.stderr || "(no logs)";
-  const header = `Logs for ${bot.name} (\`${bot.id}\`, ${bot.serviceName}):`;
-  const text = `${header}\n\n${body}`;
+  const header = `Логи ${bot.name} (\`${bot.id}\`, ${bot.serviceName}):`;
+  const text = `${header}\n\n${formatCommandOutput(command, "(логов нет)")}`;
   return text.length > 4000 ? `${text.slice(0, 3990)}…` : text;
 }
 
