@@ -38,19 +38,67 @@ npm run dev
 | `npm test` | Run Vitest test suite |
 | `npm run typecheck` | Type-check without emitting |
 
+## Managed bots (systemd)
+
+CreaBotManager controls other Telegram bots running as **systemd services** on Debian.
+
+### 1. Register bots
+
+Edit `config/managed-bots.json` on the server (copy from `config/managed-bots.example.json`):
+
+```json
+{
+  "bots": [
+    {
+      "id": "trip-planner",
+      "name": "Crea Trip Planner",
+      "serviceName": "telegram-trip-planner"
+    }
+  ]
+}
+```
+
+- `id` — short name used in Telegram commands (`/botstart trip-planner`)
+- `name` — display name in `/bots` list
+- `serviceName` — exact systemd unit name (without `.service`)
+
+### 2. Server permissions
+
+The manager process must be allowed to run `systemctl` and `journalctl` for those units. See `deploy/sudoers-crea-bot-manager.example` — install via `visudo` on the server.
+
+Set `USE_SUDO_FOR_SYSTEMCTL=true` in `.env` (default).
+
+### 3. Telegram commands
+
+| Command | Action |
+|---------|--------|
+| `/bots` | List registered bots and live status |
+| `/botstart <id>` | `systemctl start` |
+| `/botstop <id>` | `systemctl stop` |
+| `/botrestart <id>` | `systemctl restart` |
+| `/botstatus <id>` | `systemctl status` |
+| `/botlogs <id> [lines]` | `journalctl` tail (max 200 lines) |
+
+Only user IDs from `ALLOWED_TELEGRAM_IDS` can run commands. Service names are taken from the registry only — arbitrary shell input is never executed.
+
 ## Project layout
 
 ```
 src/
   index.ts       # Entry point, graceful shutdown
   config.ts      # Zod-validated environment
-  bot/bot.ts     # Telegraf handlers — extend here
+  bot/bot.ts     # Telegraf handlers
+  services/      # Bot registry, systemd control
+config/
+  managed-bots.json          # Your registered bots (deployed with the app)
+  managed-bots.example.json  # Example registry
 scripts/
   start-local.sh # Local dev bootstrap
   deploy.sh      # Local → remote deploy (runs tests first)
   deploy-remote.sh
 deploy/
   telegram-bot-manager.service  # systemd unit template
+  sudoers-crea-bot-manager.example
 ```
 
 ## Deploy (server)
