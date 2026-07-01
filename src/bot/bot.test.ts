@@ -41,7 +41,20 @@ const { FakeTelegraf, runSystemctlMock } = vi.hoisted(() => {
   return { FakeTelegraf, runSystemctlMock: vi.fn() };
 });
 
-vi.mock("telegraf", () => ({ Telegraf: FakeTelegraf, Markup: { button: { callback: (t: string, d: string) => ({ text: t, callback_data: d }) }, inlineKeyboard: (r: unknown) => ({ reply_markup: { inline_keyboard: r } }) } }));
+vi.mock("telegraf", () => ({
+  Telegraf: FakeTelegraf,
+  Markup: {
+    button: { callback: (t: string, d: string) => ({ text: t, callback_data: d }) },
+    inlineKeyboard: (r: unknown) => ({ reply_markup: { inline_keyboard: r } }),
+    keyboard: (rows: unknown) => ({
+      resize: () => ({
+        persistent: () => ({
+          reply_markup: { keyboard: rows, resize_keyboard: true, is_persistent: true },
+        }),
+      }),
+    }),
+  },
+}));
 vi.mock("telegraf/filters", () => ({ message: (kind: string) => `${kind}-filter` }));
 vi.mock("../config", () => ({
   config: {
@@ -126,21 +139,23 @@ describe("createBot", () => {
     expect(bot.handlers.command.has("menu")).toBe(true);
   });
 
-  it("/start shows main menu keyboard", async () => {
+  it("/start shows welcome with reply keyboard", async () => {
     const runtime = createBot(mockBotStore as never, mockPermissionsStore as never, access);
     const bot = runtime.bot as unknown as InstanceType<typeof FakeTelegraf>;
     const ctx = makeCtx();
     await bot.handlers.start!(ctx);
     expect(ctx.reply).toHaveBeenCalledWith(
       expect.stringContaining("CreaBotManager"),
-      expect.objectContaining({ reply_markup: expect.any(Object) }),
+      expect.objectContaining({
+        reply_markup: expect.objectContaining({ keyboard: expect.any(Array) }),
+      }),
     );
   });
 
-  it("text trigger opens bot list", async () => {
+  it("reply keyboard label opens bot list", async () => {
     const runtime = createBot(mockBotStore as never, mockPermissionsStore as never, access);
     const bot = runtime.bot as unknown as InstanceType<typeof FakeTelegraf>;
-    const ctx = makeCtx({ message: { text: "список ботов" } });
+    const ctx = makeCtx({ message: { text: "📋 Боты" } });
     const textHandler = bot.handlers.on.find((h) => h.filter === "text-filter")!.fn;
     await textHandler(ctx);
     expect(ctx.reply).toHaveBeenCalledWith(

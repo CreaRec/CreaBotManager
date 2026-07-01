@@ -263,6 +263,22 @@ export async function showUserRevokePicker(
   );
 }
 
+export async function showHelp(ctx: MenuCtx, deps: MenuContext): Promise<void> {
+  const isAdmin = deps.access.isAdmin(ctx.from?.id ?? -1);
+  const lines = [
+    "*Клавиатура внизу:*",
+    "📋 Боты — список и управление",
+    "🏠 Меню — inline-меню",
+    "📌 Мои боты — ваши назначенные боты",
+    isAdmin ? "👥 Пользователи — операторы и доступ" : "",
+    "",
+    "*Добавление (текст):*",
+    isAdmin ? "`/botadd <id> <service> [name]`" : "",
+    isAdmin ? "`/useradd <telegramId> [имя]`" : "",
+  ].filter(Boolean);
+  await respond(ctx, lines.join("\n"), backToMainKeyboard());
+}
+
 export function registerMenuHandlers(bot: Telegraf, deps: MenuContext): void {
   bot.action("m:main", async (ctx) => {
     await showMainMenu(ctx, deps.access);
@@ -277,17 +293,7 @@ export function registerMenuHandlers(bot: Telegraf, deps: MenuContext): void {
   });
 
   bot.action("m:help", async (ctx) => {
-    const isAdmin = deps.access.isAdmin(ctx.from?.id ?? -1);
-    const lines = [
-      "*Управление через кнопки:*",
-      "Боты → выберите бота → действие",
-      isAdmin ? "Пользователи → выберите оператора → действие" : "",
-      "",
-      "*Текстовые команды (добавление):*",
-      isAdmin ? "`/botadd <id> <service> [name]`" : "",
-      isAdmin ? "`/useradd <telegramId> [имя]`" : "",
-    ].filter(Boolean);
-    await respond(ctx, lines.join("\n"), backToMainKeyboard());
+    await showHelp(ctx, deps);
   });
 
   bot.action(/^b:([a-z0-9-]+)$/, async (ctx) => {
