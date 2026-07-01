@@ -37,7 +37,7 @@ export async function executeServiceAction(
         const result = await manager.getDetailedStatus(botId);
         if (!result) return { text: "Бот не найден." };
         return {
-          text: formatDetailedStatus(result.bot, result.command),
+          text: formatDetailedStatus(result),
           extras: { parse_mode: "Markdown" as const },
         };
       }

@@ -28,8 +28,9 @@ import {
   userListKeyboard,
   userRemoveConfirmKeyboard,
 } from "./keyboards";
-import type { BotManager } from "../services/bot-manager";
-import { formatBotRemoved } from "../services/bot-manager";
+import { formatBotRemoved, type BotManager } from "../services/bot-manager";
+import { formatServiceStateLabel } from "../services/service-status-format";
+import { formatStatusEmoji } from "../services/systemd";
 import { isCallbackQueryExpiredError, isMessageNotModifiedError } from "../utils/telegram-format";
 
 export interface MenuContext {
@@ -164,11 +165,15 @@ export async function showBotDetail(
         return { text: `Бот \`${botId}\` не найден.`, extras: { parse_mode: "Markdown" as const } };
       }
 
+      const subState =
+        status.state === "active" ? "running" : status.state === "inactive" ? "dead" : undefined;
+      const stateLabel = formatServiceStateLabel(status.state, subState);
+
       const text = [
         `*${status.bot.name}*`,
         `id: \`${status.bot.id}\``,
         `service: ${status.bot.serviceName}`,
-        `статус: *${status.state}*`,
+        `статус: ${formatStatusEmoji(status.state)} ${stateLabel}`,
         "",
         "Выберите действие:",
       ].join("\n");
