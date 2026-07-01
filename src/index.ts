@@ -1,11 +1,21 @@
 import { createBot } from "./bot/bot";
 import { config } from "./config";
+import { loadBotRegistry } from "./services/bot-registry";
 
 async function main(): Promise<void> {
   if (config.allowedTelegramIds.length === 0) {
     console.warn(
       "[startup] WARNING: ALLOWED_TELEGRAM_IDS is empty - the bot will respond to ANYONE. Set it in .env.",
     );
+  }
+
+  const registry = loadBotRegistry(config.managedBotsConfigPath);
+  if (registry.bots.length === 0) {
+    console.warn(
+      `[startup] WARNING: No bots in ${config.managedBotsConfigPath}. Add entries to manage services.`,
+    );
+  } else {
+    console.log(`[startup] managing ${registry.bots.length} bot service(s).`);
   }
 
   const bot = createBot();

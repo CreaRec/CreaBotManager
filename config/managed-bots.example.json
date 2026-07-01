@@ -1,0 +1,14 @@
+{
+  "bots": [
+    {
+      "id": "trip-planner",
+      "name": "Crea Trip Planner",
+      "serviceName": "telegram-trip-planner"
+    },
+    {
+      "id": "weather",
+      "name": "Weather Bot",
+      "serviceName": "telegram-weather-bot"
+    }
+  ]
+}

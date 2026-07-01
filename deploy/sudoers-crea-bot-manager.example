@@ -1,0 +1,12 @@
+# Allow the bot manager service user to control registered Telegram bot units without a password.
+# Copy to /etc/sudoers.d/crea-bot-manager and run `visudo -cf /etc/sudoers.d/crea-bot-manager`.
+#
+# Replace USER with the systemd service user (e.g. crearec).
+# List exact unit names from config/managed-bots.json — wildcards are optional but less strict.
+
+USER ALL=(root) NOPASSWD: /bin/systemctl start telegram-*
+USER ALL=(root) NOPASSWD: /bin/systemctl stop telegram-*
+USER ALL=(root) NOPASSWD: /bin/systemctl restart telegram-*
+USER ALL=(root) NOPASSWD: /bin/systemctl is-active telegram-*
+USER ALL=(root) NOPASSWD: /bin/systemctl status telegram-*
+USER ALL=(root) NOPASSWD: /bin/journalctl -u telegram-*
