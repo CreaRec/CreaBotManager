@@ -1,6 +1,7 @@
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
+import { persistJsonFile } from "./persist-json";
 
 const managedBotSchema = z.object({
   id: z
@@ -131,8 +132,15 @@ export class BotRegistryStore {
       throw new RegistryError(`Service already registered: ${bot.serviceName}`);
     }
 
+    const previous = this.registry;
     this.registry = buildRegistry([...this.registry.bots, bot]);
-    this.save();
+    try {
+      this.save();
+    } catch (err) {
+      this.registry = previous;
+      const message = err instanceof Error ? err.message : String(err);
+      throw new RegistryError(message);
+    }
     return bot;
   }
 
@@ -143,14 +151,19 @@ export class BotRegistryStore {
       throw new RegistryError(`Unknown bot id: ${id}`);
     }
 
+    const previous = this.registry;
     this.registry = buildRegistry(this.registry.bots.filter((entry) => entry.id !== normalized));
-    this.save();
+    try {
+      this.save();
+    } catch (err) {
+      this.registry = previous;
+      const message = err instanceof Error ? err.message : String(err);
+      throw new RegistryError(message);
+    }
     return bot;
   }
 
   private save(): void {
-    const tmpPath = `${this.configPath}.tmp.${process.pid}`;
-    writeFileSync(tmpPath, serializeRegistry(this.registry.bots), "utf8");
-    renameSync(tmpPath, this.configPath);
+    persistJsonFile(this.configPath, serializeRegistry(this.registry.bots), "bot registry");
   }
 }

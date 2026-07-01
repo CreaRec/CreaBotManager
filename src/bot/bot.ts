@@ -111,8 +111,11 @@ export function createBot(
 
   bot.on(message("text"), async (ctx) => {
     const text = ctx.message.text;
-    if (text.startsWith("/")) return;
-    await ctx.reply("Используйте /help для списка команд.");
+    if (!text.startsWith("/")) {
+      await ctx.reply("Используйте /help для списка команд.");
+      return;
+    }
+    await ctx.reply("Неизвестная команда. Используйте /help.");
   });
 
   return { bot, botStore, permissionsStore, access };

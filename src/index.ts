@@ -2,11 +2,23 @@ import { createBot } from "./bot/bot";
 import { config } from "./config";
 import { AccessControl } from "./services/access-control";
 import { BotRegistryStore } from "./services/bot-registry";
+import { ensureRuntimeJsonFile } from "./services/runtime-data";
 import { UserPermissionsStore } from "./services/user-permissions";
 
 async function main(): Promise<void> {
-  const botStore = new BotRegistryStore(config.managedBotsConfigPath);
-  const permissionsStore = new UserPermissionsStore(config.userPermissionsConfigPath);
+  const managedBotsPath = ensureRuntimeJsonFile(
+    config.managedBotsConfigPath,
+    "config/managed-bots.json",
+    '{"bots":[]}\n',
+  );
+  const userPermissionsPath = ensureRuntimeJsonFile(
+    config.userPermissionsConfigPath,
+    "config/user-permissions.json",
+    '{"users":[]}\n',
+  );
+
+  const botStore = new BotRegistryStore(managedBotsPath);
+  const permissionsStore = new UserPermissionsStore(userPermissionsPath);
   const access = new AccessControl(config.adminTelegramIds, permissionsStore);
 
   if (access.isOpenMode()) {
@@ -19,7 +31,7 @@ async function main(): Promise<void> {
 
   const registry = botStore.getRegistry();
   if (registry.bots.length === 0) {
-    console.warn(`[startup] No bots in ${config.managedBotsConfigPath}. Admins can add bots via /botadd.`);
+    console.warn(`[startup] No bots in ${managedBotsPath}. Admins can add bots via /botadd.`);
   } else {
     console.log(`[startup] managing ${registry.bots.length} bot service(s).`);
   }

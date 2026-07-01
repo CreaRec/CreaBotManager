@@ -89,14 +89,16 @@ export function registerUserCommands(
     }
 
     const args = extractArgs(ctx.message.text);
-    if (args.length < 1) {
+    const telegramIdRaw = ctx.args[0] ?? args[0];
+    if (!telegramIdRaw) {
       await ctx.reply("Usage: /userremove <telegramId>");
       return;
     }
 
     try {
-      const telegramId = parseTelegramId(args[0]!);
+      const telegramId = parseTelegramId(telegramIdRaw);
       permissionsStore.removeUser(telegramId);
+      console.log(`[permissions] admin ${userId} removed user ${telegramId}`);
       await ctx.reply(formatUserRemoved(telegramId));
     } catch (err) {
       await ctx.reply(formatPermissionsError(err));

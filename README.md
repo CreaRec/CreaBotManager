@@ -55,9 +55,9 @@ CreaBotManager controls other Telegram bots running as **systemd services** on D
 - `service` — exact systemd unit name (without `.service`)
 - `name` — optional display name (defaults to `id`)
 
-Changes are saved to `config/managed-bots.json` immediately — no bot restart required.
+Changes are saved to `data/managed-bots.json` immediately — no bot restart required (this file is not overwritten by deploy).
 
-You can also edit `config/managed-bots.json` manually (see `config/managed-bots.example.json`).
+You can also edit `data/managed-bots.json` manually (see `config/managed-bots.example.json` for the format).
 
 ### 2. User access (per-bot permissions)
 
@@ -118,10 +118,11 @@ src/
   bot/bot.ts     # Telegraf handlers
   services/      # Bot registry, systemd control
 config/
-  managed-bots.json              # Registered bots
   managed-bots.example.json
-  user-permissions.json          # Per-user bot access
   user-permissions.example.json
+data/                            # Runtime data (preserved across deploys)
+  managed-bots.json
+  user-permissions.json
 scripts/
   start-local.sh # Local dev bootstrap
   deploy.sh      # Local → remote deploy (runs tests first)

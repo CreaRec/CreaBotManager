@@ -7,8 +7,8 @@ const schema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
   ADMIN_TELEGRAM_IDS: z.string().optional(),
   BOT_HANDLER_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
-  MANAGED_BOTS_CONFIG: z.string().min(1).default("config/managed-bots.json"),
-  USER_PERMISSIONS_CONFIG: z.string().min(1).default("config/user-permissions.json"),
+  MANAGED_BOTS_CONFIG: z.string().min(1).default("data/managed-bots.json"),
+  USER_PERMISSIONS_CONFIG: z.string().min(1).default("data/user-permissions.json"),
   SYSTEMCTL_PATH: z.string().min(1).default("/bin/systemctl"),
   JOURNALCTL_PATH: z.string().min(1).default("/bin/journalctl"),
   USE_SUDO_FOR_SYSTEMCTL: z
