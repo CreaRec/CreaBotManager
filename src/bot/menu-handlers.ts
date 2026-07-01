@@ -1,10 +1,10 @@
 import type { Context, Telegraf } from "telegraf";
 import {
-  formatActionResult,
-  formatBotRemoved,
-  formatDetailedStatus,
-  formatLogs,
-} from "../services/bot-manager";
+  ACTION_PROGRESS_LABELS,
+  formatProgressText,
+  runWithProgress,
+} from "./progress-reply";
+import { executeServiceAction } from "./service-actions";
 import {
   AccessControl,
   formatAdminOnly,
@@ -29,6 +29,7 @@ import {
   userRemoveConfirmKeyboard,
 } from "./keyboards";
 import type { BotManager } from "../services/bot-manager";
+import { formatBotRemoved } from "../services/bot-manager";
 import { isCallbackQueryExpiredError, isMessageNotModifiedError } from "../utils/telegram-format";
 
 export interface MenuContext {
@@ -109,22 +110,34 @@ export async function showBotList(ctx: MenuCtx, deps: MenuContext): Promise<void
   if (userId === undefined) return;
 
   await ackCallback(ctx, "Обновляю список…");
-  const statuses = await deps.manager.listStatuses();
-  const visible = deps.access.filterStatuses(userId, statuses);
+  await runWithProgress(
+    ctx,
+    formatProgressText(ACTION_PROGRESS_LABELS.list!),
+    async () => {
+      const statuses = await deps.manager.listStatuses();
+      const visible = deps.access.filterStatuses(userId, statuses);
 
-  if (visible.length === 0) {
-    const hint = deps.access.isAdmin(userId)
-      ? "Ботов пока нет. Добавьте: `/botadd <id> <service> [name]`"
-      : "Вам не назначено ни одного бота.";
-    await present(ctx, hint, backToMainKeyboard());
-    return;
-  }
+      if (visible.length === 0) {
+        const hint = deps.access.isAdmin(userId)
+          ? "Ботов пока нет. Добавьте: `/botadd <id> <service> [name]`"
+          : "Вам не назначено ни одного бота.";
+        return {
+          text: hint,
+          extras: { parse_mode: "Markdown" as const, ...backToMainKeyboard() },
+        };
+      }
 
-  const lines = ["Выберите бота:", ""];
-  for (const { bot, state } of visible) {
-    lines.push(`• ${bot.name} (\`${bot.id}\`) — ${state}`);
-  }
-  await present(ctx, lines.join("\n"), botListKeyboard(visible));
+      const lines = ["Выберите бота:", ""];
+      for (const { bot, state } of visible) {
+        lines.push(`• ${bot.name} (\`${bot.id}\`) — ${state}`);
+      }
+      return {
+        text: lines.join("\n"),
+        extras: { parse_mode: "Markdown" as const, ...botListKeyboard(visible) },
+      };
+    },
+    { preferEdit: true },
+  );
 }
 
 export async function showBotDetail(
@@ -141,22 +154,35 @@ export async function showBotDetail(
   }
 
   await ackCallback(ctx);
-  const status = await deps.manager.getStatus(botId);
-  if (!status) {
-    await present(ctx, `Бот \`${botId}\` не найден.`);
-    return;
-  }
+  const bot = deps.manager.getBot(botId);
+  await runWithProgress(
+    ctx,
+    formatProgressText(ACTION_PROGRESS_LABELS.detail!, bot?.name ?? botId),
+    async () => {
+      const status = await deps.manager.getStatus(botId);
+      if (!status) {
+        return { text: `Бот \`${botId}\` не найден.`, extras: { parse_mode: "Markdown" as const } };
+      }
 
-  const text = [
-    `*${status.bot.name}*`,
-    `id: \`${status.bot.id}\``,
-    `service: ${status.bot.serviceName}`,
-    `статус: *${status.state}*`,
-    "",
-    "Выберите действие:",
-  ].join("\n");
+      const text = [
+        `*${status.bot.name}*`,
+        `id: \`${status.bot.id}\``,
+        `service: ${status.bot.serviceName}`,
+        `статус: *${status.state}*`,
+        "",
+        "Выберите действие:",
+      ].join("\n");
 
-  await present(ctx, text, botActionsKeyboard(botId, deps.access.isAdmin(userId)));
+      return {
+        text,
+        extras: {
+          parse_mode: "Markdown" as const,
+          ...botActionsKeyboard(botId, deps.access.isAdmin(userId)),
+        },
+      };
+    },
+    { preferEdit: true },
+  );
 }
 
 export async function runBotAction(
@@ -173,38 +199,9 @@ export async function runBotAction(
     return;
   }
 
-  if (action === "status") {
-    await ackCallback(ctx, "Загрузка…");
-    const result = await deps.manager.getDetailedStatus(botId);
-    if (!result) {
-      await ctx.reply("Бот не найден.");
-      return;
-    }
-    await ctx.reply(formatDetailedStatus(result.bot, result.command), { parse_mode: "Markdown" });
-    return;
-  }
-
-  if (action === "logs") {
-    await ackCallback(ctx, "Загрузка…");
-    const result = await deps.manager.getLogs(botId, 30);
-    if (!result) {
-      await ctx.reply("Бот не найден.");
-      return;
-    }
-    await ctx.reply(formatLogs(result.bot, result.command), { parse_mode: "Markdown" });
-    return;
-  }
-
   await ackCallback(ctx, "Выполняю…");
-  const result = await deps.manager.runAction(botId, action);
-  if (!result) {
-    await ctx.reply("Бот не найден.");
-    return;
-  }
-
-  await ctx.reply(formatActionResult(result), {
-    parse_mode: "Markdown",
-    ...botActionsKeyboard(botId, deps.access.isAdmin(userId)),
+  await executeServiceAction(ctx, deps.manager, botId, action, {
+    isAdmin: deps.access.isAdmin(userId),
   });
 }
 
