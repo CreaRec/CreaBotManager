@@ -25,6 +25,7 @@ describe("docker deploy contracts", () => {
     expect(workflow).toMatch(/docker compose up -d/);
     expect(workflow).toMatch(/docker-compose\.yml/);
     expect(workflow).toMatch(/telegram-bot-manager/);
+    expect(workflow).toMatch(/DOCKER_GID/);
     expect(workflow).not.toMatch(/scripts\/deploy\.sh/);
   });
 });

@@ -108,6 +108,14 @@ jobs:
             exit 1
           fi
 
+          # DOCKER_GID must be numeric; compose does not expand $(stat ...) in .env.
+          DOCKER_GID_VALUE="\$(sed -n 's/^DOCKER_GID=//p' .env | tail -n1)"
+          if ! printf '%s' "\${DOCKER_GID_VALUE}" | grep -Eq '^[0-9]+$'; then
+            echo "ERROR: DOCKER_GID in .env must be a number (got: \${DOCKER_GID_VALUE:-<missing>})." >&2
+            echo "Fix on the server: put digits only, e.g. DOCKER_GID=998 from: stat -c '%g' /var/run/docker.sock" >&2
+            exit 1
+          fi
+
           if [ -f /etc/systemd/system/telegram-bot-manager.service ] || systemctl list-unit-files telegram-bot-manager.service 2>/dev/null | grep -q telegram-bot-manager; then
             sudo systemctl disable --now telegram-bot-manager || true
           fi

@@ -46,13 +46,28 @@ cd /home/crearec/crea-bot-manager
 
 Copy `docker-compose.yml` from the repo once (Actions will refresh it on later deploys).
 
-Create `.env` from [`.env.example`](../.env.example):
+Create `.env` from [`.env.example`](../.env.example).
+
+`DOCKER_GID` must be a **numeric** GID. Compose does not expand shell commands in `.env`.
+
+```sh
+# print the number, then paste it into .env
+stat -c '%g' /var/run/docker.sock
+```
+
+Example `.env`:
 
 ```sh
 TELEGRAM_BOT_TOKEN=...
 ADMIN_TELEGRAM_IDS=...
 IMAGE=ghcr.io/crearec/crea-bot-manager
 IMAGE_TAG=main
+DOCKER_GID=998
+```
+
+Wrong (will fail with “Unable to find group $(stat …)”):
+
+```sh
 DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
 ```
 

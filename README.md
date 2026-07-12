@@ -95,10 +95,12 @@ Operators **cannot** run `/botadd` or `/botremove`.
 
 ### 3. Docker access
 
-The manager container mounts `/var/run/docker.sock` and joins the host `docker` group via `DOCKER_GID` in `.env`:
+The manager container mounts `/var/run/docker.sock` and joins the host `docker` group via `DOCKER_GID` in `.env`. Put a **number**, not a shell command:
 
 ```sh
-DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)   # Linux
+stat -c '%g' /var/run/docker.sock   # print GID, e.g. 998
+# then in .env:
+DOCKER_GID=998
 ```
 
 **Troubleshooting:**
