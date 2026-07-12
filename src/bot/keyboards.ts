@@ -1,7 +1,7 @@
 import { Markup } from "telegraf";
 import type { BotStatus } from "../services/bot-manager";
 import type { UserPermission } from "../services/user-permissions";
-import { formatStatusEmoji } from "../services/systemd";
+import { formatStatusEmoji } from "../services/docker";
 
 const BOT_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 

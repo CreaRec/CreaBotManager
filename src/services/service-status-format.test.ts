@@ -8,7 +8,7 @@ import {
 } from "./service-status-format";
 
 describe("service-status-format", () => {
-  it("parses systemctl show output", () => {
+  it("parses key=value props", () => {
     const props = parseSystemctlShow(
       "ActiveState=active\nSubState=running\nMainPID=1234\nMemoryCurrent=1048576\n",
     );
@@ -16,39 +16,52 @@ describe("service-status-format", () => {
     expect(props.MainPID).toBe("1234");
   });
 
-  it("formats active service status in Russian", () => {
+  it("formats active container status in Russian", () => {
     const text = formatHumanServiceStatus({
-      bot: { id: "flibusta", name: "FlibustaBot", serviceName: "telegram-flibusta" },
+      bot: {
+        id: "flibusta",
+        name: "FlibustaBot",
+        composeProject: "crea-flibusta-bot",
+        composeService: "bot",
+      },
       state: "active",
       props: {
         ActiveState: "active",
         SubState: "running",
-        UnitFileState: "enabled",
+        UnitFileState: "unless-stopped",
         MainPID: "4242",
-        ActiveEnterTimestamp: "Wed 2026-07-01 14:15:24 CEST",
+        ActiveEnterTimestamp: "2026-07-01T14:15:24Z",
+        ContainerName: "crea-flibusta-bot-bot-1",
+        ContainerId: "abc123def456",
         MemoryCurrent: "52428800",
       },
     });
 
     expect(text).toContain("FlibustaBot");
     expect(text).toContain("работает");
-    expect(text).toContain("автозапуск: включён");
+    expect(text).toContain("crea-flibusta-bot/bot");
+    expect(text).toContain("restart: unless-stopped");
     expect(text).toContain("PID: 4242");
     expect(text).toContain("запущен:");
     expect(text).toContain("50.0 MB");
     expect(text).not.toContain("```");
   });
 
-  it("formats inactive service status", () => {
+  it("formats inactive container status", () => {
     const text = formatHumanServiceStatus({
-      bot: { id: "flibusta", name: "FlibustaBot", serviceName: "telegram-flibusta" },
+      bot: {
+        id: "flibusta",
+        name: "FlibustaBot",
+        composeProject: "crea-flibusta-bot",
+        composeService: "bot",
+      },
       state: "inactive",
       props: {
         ActiveState: "inactive",
-        SubState: "dead",
-        UnitFileState: "enabled",
+        SubState: "exited",
+        UnitFileState: "unless-stopped",
         MainPID: "0",
-        InactiveEnterTimestamp: "Wed 2026-07-01 14:20:00 CEST",
+        InactiveEnterTimestamp: "2026-07-01T14:20:00Z",
       },
     });
 
@@ -64,16 +77,20 @@ describe("service-status-format", () => {
     expect(formatBytes(1536)).toBe("1.5 KB");
   });
 
-  it("shows limited-details hint when show is denied but is-active works", () => {
+  it("shows limited-details hint when inspect is denied", () => {
     const text = formatHumanServiceStatus({
-      bot: { id: "flibusta", name: "FlibustaBot", serviceName: "telegram-flibusta" },
+      bot: {
+        id: "flibusta",
+        name: "FlibustaBot",
+        composeProject: "crea-flibusta-bot",
+        composeService: "bot",
+      },
       state: "active",
       props: { ActiveState: "active" },
       limitedDetails: true,
     });
 
     expect(text).toContain("работает");
-    expect(text).toContain("systemctl show");
-    expect(text).not.toContain("Нет доступа к systemctl");
+    expect(text).toContain("DOCKER_GID");
   });
 });

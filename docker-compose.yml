@@ -1,0 +1,14 @@
+services:
+  bot:
+    image: ${IMAGE:-ghcr.io/crearec/crea-bot-manager}:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      MANAGED_BOTS_CONFIG: /app/data/managed-bots.json
+      USER_PERMISSIONS_CONFIG: /app/data/user-permissions.json
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID}"

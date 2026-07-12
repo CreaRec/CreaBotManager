@@ -30,8 +30,26 @@ describe("AccessControl", () => {
   it("filters bot statuses for operators", () => {
     const access = new AccessControl([111], permissionsStore);
     const statuses = [
-      { bot: { id: "trip-planner", name: "Trip", serviceName: "svc-a" }, state: "active" as const, raw: "active" },
-      { bot: { id: "weather", name: "Weather", serviceName: "svc-b" }, state: "inactive" as const, raw: "inactive" },
+      {
+        bot: {
+          id: "trip-planner",
+          name: "Trip",
+          composeProject: "crea-trip-planner",
+          composeService: "bot",
+        },
+        state: "active" as const,
+        raw: "active",
+      },
+      {
+        bot: {
+          id: "weather",
+          name: "Weather",
+          composeProject: "crea-weather",
+          composeService: "bot",
+        },
+        state: "inactive" as const,
+        raw: "inactive",
+      },
     ];
     const filtered = access.filterStatuses(222, statuses);
     expect(filtered).toHaveLength(1);

@@ -1,6 +1,6 @@
-import type { CommandResult } from "./systemd";
-import { formatStatusEmoji, parseIsActive, type ServiceState } from "./systemd";
-import { formatSudoHint, isSudoDenied } from "../utils/telegram-format";
+import type { CommandResult, ServiceState } from "./docker";
+import { formatStatusEmoji, parseIsActive } from "./docker";
+import { formatDockerHint, isDockerDenied } from "../utils/telegram-format";
 
 const ACTIVE_STATE_LABELS: Record<string, string> = {
   active: "работает",
@@ -9,6 +9,9 @@ const ACTIVE_STATE_LABELS: Record<string, string> = {
   activating: "запускается",
   deactivating: "останавливается",
   reloading: "перезагружается",
+  running: "работает",
+  exited: "остановлен",
+  restarting: "перезапускается",
 };
 
 const SUB_STATE_LABELS: Record<string, string> = {
@@ -18,13 +21,17 @@ const SUB_STATE_LABELS: Record<string, string> = {
   start: "запуск",
   stop: "остановка",
   failed: "сбой",
+  created: "создан",
+  paused: "на паузе",
+  restarting: "перезапуск",
 };
 
-const UNIT_FILE_LABELS: Record<string, string> = {
-  enabled: "включён",
-  disabled: "выключен",
-  "static": "системный",
-  masked: "заблокирован",
+const RESTART_POLICY_LABELS: Record<string, string> = {
+  "unless-stopped": "unless-stopped",
+  always: "always",
+  "on-failure": "on-failure",
+  no: "no",
+  "": "n/a",
 };
 
 export function parseSystemctlShow(stdout: string): Record<string, string> {
@@ -54,31 +61,33 @@ export function formatServiceStateLabel(activeState: string, subState?: string):
 
   const sub = subState.trim().toLowerCase();
   const subLabel = SUB_STATE_LABELS[sub] ?? subState;
-  if (active === "active" && sub === "running") return "работает";
-  if (active === "inactive" && sub === "dead") return "остановлен";
+  if ((active === "active" || active === "running") && sub === "running") return "работает";
+  if ((active === "inactive" || active === "exited") && (sub === "dead" || sub === "exited")) {
+    return "остановлен";
+  }
   return `${activeLabel} (${subLabel})`;
 }
 
 export function formatUnitFileState(value: string | undefined): string | undefined {
   if (!value || value === "n/a") return undefined;
-  return UNIT_FILE_LABELS[value] ?? value;
+  return RESTART_POLICY_LABELS[value] ?? value;
 }
 
 export function formatTimestamp(value: string | undefined): string | undefined {
-  if (!value || value === "n/a") return undefined;
+  if (!value || value === "n/a" || value.startsWith("0001-01-01")) return undefined;
   return value;
 }
 
 export function stateFromServiceProps(props: Record<string, string>): ServiceState {
   const activeState = props.ActiveState?.trim().toLowerCase();
-  if (activeState === "activating") return "unknown";
+  if (activeState === "activating" || activeState === "restarting") return "unknown";
   if (activeState === "deactivating") return "inactive";
   if (activeState) return parseIsActive(activeState);
   return "unknown";
 }
 
 export interface HumanStatusInput {
-  bot: { id: string; name: string; serviceName: string };
+  bot: { id: string; name: string; composeProject: string; composeService: string };
   state: ServiceState;
   props: Record<string, string>;
   command?: CommandResult;
@@ -93,12 +102,15 @@ export function formatHumanServiceStatus(input: HumanStatusInput): string {
     `📊 *${bot.name}*`,
     "",
     `• id: \`${bot.id}\``,
-    `• сервис: ${bot.serviceName}`,
+    `• compose: \`${bot.composeProject}/${bot.composeService}\``,
     `• состояние: ${emoji} ${stateLabel}`,
   ];
 
-  const autostart = formatUnitFileState(props.UnitFileState);
-  if (autostart) lines.push(`• автозапуск: ${autostart}`);
+  if (props.ContainerName) lines.push(`• контейнер: \`${props.ContainerName}\``);
+  if (props.ContainerId) lines.push(`• id контейнера: \`${props.ContainerId}\``);
+
+  const restart = formatUnitFileState(props.UnitFileState);
+  if (restart) lines.push(`• restart: ${restart}`);
 
   const pid = props.MainPID;
   if (pid && pid !== "0") lines.push(`• PID: ${pid}`);
@@ -113,16 +125,19 @@ export function formatHumanServiceStatus(input: HumanStatusInput): string {
   if (memory) lines.push(`• память: ${memory}`);
 
   if (state === "failed" && props.Result && props.Result !== "success") {
-    lines.push(`• результат: ${props.Result}`);
+    lines.push(`• exit code: ${props.Result}`);
   }
 
   if (input.limitedDetails) {
     lines.push(
       "",
-      "ℹ️ Краткий статус. Для PID и памяти добавьте в sudoers: `/bin/systemctl show telegram-*`",
+      "ℹ️ Краткий статус. Проверьте доступ к Docker socket (`DOCKER_GID` / группа `docker`).",
     );
   } else if (state === "unknown" && command) {
-    const hint = formatSudoHint(command.stderr || command.stdout);
+    const hint = formatDockerHint(command.stderr || command.stdout);
+    if (hint) lines.push("", `⚠️ ${hint}`);
+  } else if (command && isDockerDenied(command.stderr || command.stdout)) {
+    const hint = formatDockerHint(command.stderr || command.stdout);
     if (hint) lines.push("", `⚠️ ${hint}`);
   }
 

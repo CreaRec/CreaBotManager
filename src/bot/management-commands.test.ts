@@ -8,7 +8,14 @@ import { showBotList } from "./menu-handlers";
 describe("management-commands", () => {
   const registry = parseBotRegistryJson(
     JSON.stringify({
-      bots: [{ id: "trip-planner", name: "Trip Planner", serviceName: "telegram-trip-planner" }],
+      bots: [
+        {
+          id: "trip-planner",
+          name: "Trip Planner",
+          composeProject: "crea-trip-planner",
+          composeService: "bot",
+        },
+      ],
     }),
   );
   const store = {

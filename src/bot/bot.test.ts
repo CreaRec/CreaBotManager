@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { FakeTelegraf, runSystemctlMock } = vi.hoisted(() => {
+const { FakeTelegraf, listComposeContainersMock } = vi.hoisted(() => {
   class FakeTelegraf {
     handlers: {
       use: Array<(ctx: unknown, next: () => unknown) => unknown>;
@@ -38,7 +38,7 @@ const { FakeTelegraf, runSystemctlMock } = vi.hoisted(() => {
     }
     stop() {}
   }
-  return { FakeTelegraf, runSystemctlMock: vi.fn() };
+  return { FakeTelegraf, listComposeContainersMock: vi.fn() };
 });
 
 vi.mock("telegraf", () => ({
@@ -63,17 +63,22 @@ vi.mock("../config", () => ({
     botHandlerTimeoutMs: 180_000,
     managedBotsConfigPath: "data/managed-bots.json",
     userPermissionsConfigPath: "data/user-permissions.json",
-    systemctlPath: "/bin/systemctl",
-    journalctlPath: "/bin/journalctl",
-    useSudoForSystemctl: true,
+    dockerPath: "/usr/bin/docker",
   },
 }));
 
+const tripBot = {
+  id: "trip-planner",
+  name: "Trip Planner",
+  composeProject: "crea-trip-planner",
+  composeService: "bot",
+};
+
 const mockBotStore = {
   getRegistry: () => ({
-    bots: [{ id: "trip-planner", name: "Trip Planner", serviceName: "telegram-trip-planner" }],
-    byId: new Map([["trip-planner", { id: "trip-planner", name: "Trip Planner", serviceName: "telegram-trip-planner" }]]),
-    byServiceName: new Map(),
+    bots: [tripBot],
+    byId: new Map([["trip-planner", tripBot]]),
+    byComposeTarget: new Map([["crea-trip-planner/bot", tripBot]]),
   }),
 };
 
@@ -88,12 +93,14 @@ const mockPermissionsStore = {
   removeBotFromAllUsers: vi.fn(),
 };
 
-vi.mock("../services/systemd", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../services/systemd")>();
+vi.mock("../services/docker", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/docker")>();
   return {
     ...actual,
-    runSystemctl: runSystemctlMock,
-    fetchServiceLogs: vi.fn(),
+    listComposeContainers: listComposeContainersMock,
+    runContainerAction: vi.fn(),
+    fetchContainerLogs: vi.fn(),
+    inspectContainer: vi.fn(),
   };
 });
 
@@ -129,7 +136,10 @@ describe("createBot", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    runSystemctlMock.mockResolvedValue({ stdout: "active", stderr: "", exitCode: 0 });
+    listComposeContainersMock.mockResolvedValue({
+      containers: [{ id: "1", name: "bot", status: "Up", state: "running" }],
+      command: { stdout: "", stderr: "", exitCode: 0 },
+    });
   });
 
   it("registers menu action handlers", () => {

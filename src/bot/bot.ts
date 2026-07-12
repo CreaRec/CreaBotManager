@@ -47,9 +47,8 @@ export function createBot(
   access: AccessControl,
 ): BotRuntime {
   const manager = new BotManager(botStore, {
-    systemctlPath: config.systemctlPath,
-    journalctlPath: config.journalctlPath,
-    useSudo: config.useSudoForSystemctl,
+    dockerPath: config.dockerPath,
+    dockerHost: config.dockerHost,
   });
 
   const menuDeps: MenuContext = {
@@ -73,7 +72,7 @@ export function createBot(
     const reply =
       err instanceof Error && err.name === "TimeoutError"
         ? "Превышено время ожидания. Попробуйте ещё раз."
-        : "Произошла ошибка. Попробуйте ещё раз или проверьте логи: `journalctl -u telegram-bot-manager -n 50`";
+        : "Произошла ошибка. Попробуйте ещё раз или проверьте логи: `docker compose logs --tail=50 bot`";
     void ctx.reply(reply, { parse_mode: "Markdown" }).catch((replyErr) => {
       console.error("[bot] failed to send error reply:", replyErr);
     });

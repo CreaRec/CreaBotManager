@@ -30,7 +30,7 @@ import {
 } from "./keyboards";
 import { formatBotRemoved, type BotManager } from "../services/bot-manager";
 import { formatServiceStateLabel } from "../services/service-status-format";
-import { formatStatusEmoji } from "../services/systemd";
+import { formatStatusEmoji } from "../services/docker";
 import { isCallbackQueryExpiredError, isMessageNotModifiedError } from "../utils/telegram-format";
 
 export interface MenuContext {
@@ -120,7 +120,7 @@ export async function showBotList(ctx: MenuCtx, deps: MenuContext): Promise<void
 
       if (visible.length === 0) {
         const hint = deps.access.isAdmin(userId)
-          ? "Ботов пока нет. Добавьте: `/botadd <id> <service> [name]`"
+          ? "Ботов пока нет. Добавьте: `/botadd <id> <composeProject> [name]`"
           : "Вам не назначено ни одного бота.";
         return {
           text: hint,
@@ -172,7 +172,7 @@ export async function showBotDetail(
       const text = [
         `*${status.bot.name}*`,
         `id: \`${status.bot.id}\``,
-        `service: ${status.bot.serviceName}`,
+        `compose: \`${status.bot.composeProject}/${status.bot.composeService}\``,
         `статус: ${formatStatusEmoji(status.state)} ${stateLabel}`,
         "",
         "Выберите действие:",
@@ -307,7 +307,7 @@ export async function showHelp(ctx: MenuCtx, deps: MenuContext): Promise<void> {
     isAdmin ? "👥 Пользователи — операторы и доступ" : "",
     "",
     "*Добавление (текст):*",
-    isAdmin ? "`/botadd <id> <service> [name]`" : "",
+    isAdmin ? "`/botadd <id> <composeProject> [name]`" : "",
     isAdmin ? "`/useradd <telegramId> [имя]`" : "",
   ].filter(Boolean);
   await respond(ctx, lines.join("\n"), backToMainKeyboard());

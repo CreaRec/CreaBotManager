@@ -3,12 +3,20 @@
     {
       "id": "trip-planner",
       "name": "Crea Trip Planner",
-      "serviceName": "telegram-trip-planner"
+      "composeProject": "crea-trip-planner",
+      "composeService": "bot"
     },
     {
-      "id": "weather",
-      "name": "Weather Bot",
-      "serviceName": "telegram-weather-bot"
+      "id": "video-downloader",
+      "name": "Crea Video Downloader",
+      "composeProject": "crea-video-downloader-bot",
+      "composeService": "bot"
+    },
+    {
+      "id": "flibusta",
+      "name": "FlibustaBot",
+      "composeProject": "crea-flibusta-bot",
+      "composeService": "bot"
     }
   ]
 }

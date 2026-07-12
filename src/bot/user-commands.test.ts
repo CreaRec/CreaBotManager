@@ -9,7 +9,14 @@ describe("user-commands", () => {
     getRegistry: () =>
       parseBotRegistryJson(
         JSON.stringify({
-          bots: [{ id: "trip-planner", name: "Trip", serviceName: "telegram-trip-planner" }],
+          bots: [
+            {
+              id: "trip-planner",
+              name: "Trip",
+              composeProject: "crea-trip-planner",
+              composeService: "bot",
+            },
+          ],
         }),
       ),
   };

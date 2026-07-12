@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   escapeMarkdown,
-  formatSudoHint,
+  formatDockerHint,
   isCallbackQueryExpiredError,
   isMessageNotModifiedError,
   wrapCodeBlock,
@@ -16,9 +16,12 @@ describe("telegram-format", () => {
     expect(wrapCodeBlock("active")).toBe("```\nactive\n```");
   });
 
-  it("detects sudo permission errors", () => {
-    expect(formatSudoHint("sudo: a password is required")).toMatch(/sudoers/);
-    expect(formatSudoHint("active")).toBeNull();
+  it("detects docker permission errors", () => {
+    expect(
+      formatDockerHint("Got permission denied while trying to connect to the Docker daemon"),
+    ).toMatch(/DOCKER_GID/);
+    expect(formatDockerHint("No container found for crea-x/bot")).toMatch(/Контейнер не найден/);
+    expect(formatDockerHint("active")).toBeNull();
   });
 
   it("detects expired callback query errors", () => {

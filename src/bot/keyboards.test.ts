@@ -35,7 +35,12 @@ describe("keyboards", () => {
   it("builds bot list with status buttons", () => {
     const kb = botListKeyboard([
       {
-        bot: { id: "trip-planner", name: "Trip", serviceName: "svc" },
+        bot: {
+          id: "trip-planner",
+          name: "Trip",
+          composeProject: "crea-trip-planner",
+          composeService: "bot",
+        },
         state: "active",
         raw: "active",
       },

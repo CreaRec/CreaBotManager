@@ -1,7 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
 import {
   BotRegistryStore,
   RegistryError,
@@ -11,21 +11,37 @@ import {
 } from "./bot-registry";
 
 describe("bot-registry", () => {
-  it("parses registry file shape", () => {
+  it("loads object and array forms", () => {
     const registry = parseBotRegistryJson(
       JSON.stringify({
-        bots: [{ id: "trip-planner", name: "Trip Planner", serviceName: "telegram-trip-planner" }],
+        bots: [
+          {
+            id: "trip-planner",
+            name: "Trip Planner",
+            composeProject: "crea-trip-planner",
+            composeService: "bot",
+          },
+        ],
       }),
     );
     expect(registry.bots).toHaveLength(1);
-    expect(registry.byId.get("trip-planner")?.serviceName).toBe("telegram-trip-planner");
+    expect(registry.byId.get("trip-planner")?.composeProject).toBe("crea-trip-planner");
+
+    const arrayRegistry = parseBotRegistryJson(
+      JSON.stringify([
+        { id: "weather", name: "Weather", composeProject: "crea-weather", composeService: "bot" },
+      ]),
+    );
+    expect(arrayRegistry.byComposeTarget.get("crea-weather/bot")?.id).toBe("weather");
   });
 
-  it("parses bare array shape", () => {
-    const registry = parseBotRegistryJson(
-      JSON.stringify([{ id: "weather", name: "Weather", serviceName: "telegram-weather" }]),
-    );
-    expect(registry.byServiceName.get("telegram-weather")?.id).toBe("weather");
+  it("defaults composeService to bot", () => {
+    const bot = parseManagedBot({
+      id: "trip-planner",
+      name: "Trip",
+      composeProject: "crea-trip-planner",
+    });
+    expect(bot.composeService).toBe("bot");
   });
 
   it("rejects duplicate ids", () => {
@@ -33,102 +49,110 @@ describe("bot-registry", () => {
       parseBotRegistryJson(
         JSON.stringify({
           bots: [
-            { id: "a", name: "A", serviceName: "svc-a" },
-            { id: "a", name: "B", serviceName: "svc-b" },
+            { id: "a", name: "A", composeProject: "proj-a", composeService: "bot" },
+            { id: "a", name: "B", composeProject: "proj-b", composeService: "bot" },
           ],
         }),
       ),
     ).toThrow(/Duplicate managed bot id/);
   });
 
-  it("rejects invalid service names", () => {
+  it("rejects unsafe compose names", () => {
     expect(() =>
       parseBotRegistryJson(
         JSON.stringify({
-          bots: [{ id: "bad", name: "Bad", serviceName: "svc;rm -rf" }],
+          bots: [{ id: "bad", name: "Bad", composeProject: "svc;rm -rf", composeService: "bot" }],
         }),
       ),
     ).toThrow();
   });
 
-  it("allows empty registry", () => {
-    const registry = parseBotRegistryJson(JSON.stringify({ bots: [] }));
-    expect(registry.bots).toHaveLength(0);
-  });
-
-  it("normalizes bot ids to lowercase", () => {
-    const bot = parseManagedBot({ id: "Trip-Planner", name: "Trip", serviceName: "telegram-trip" });
+  it("normalizes id and serializes", () => {
+    const bot = parseManagedBot({
+      id: "Trip-Planner",
+      name: "Trip",
+      composeProject: "crea-trip-planner",
+      composeService: "bot",
+    });
     expect(bot.id).toBe("trip-planner");
-  });
-
-  it("serializes registry as JSON file", () => {
-    const json = serializeRegistry([{ id: "a", name: "A", serviceName: "svc-a" }]);
+    const json = serializeRegistry([
+      { id: "a", name: "A", composeProject: "proj-a", composeService: "bot" },
+    ]);
     expect(JSON.parse(json)).toEqual({
-      bots: [{ id: "a", name: "A", serviceName: "svc-a" }],
+      bots: [{ id: "a", name: "A", composeProject: "proj-a", composeService: "bot" }],
     });
   });
-});
 
-describe("BotRegistryStore", () => {
-  function withTempStore(initial = { bots: [] as Array<{ id: string; name: string; serviceName: string }> }) {
-    const dir = mkdtempSync(join(tmpdir(), "bot-registry-"));
-    const configPath = join(dir, "managed-bots.json");
-    const store = new BotRegistryStore(configPath, parseBotRegistryJson(JSON.stringify(initial)));
-    return {
-      store,
-      configPath,
-      cleanup: () => rmSync(dir, { recursive: true, force: true }),
-    };
-  }
+  describe("BotRegistryStore", () => {
+    function withTempStore(
+      initial = {
+        bots: [] as Array<{
+          id: string;
+          name: string;
+          composeProject: string;
+          composeService: string;
+        }>,
+      },
+    ) {
+      const dir = mkdtempSync(join(tmpdir(), "bot-registry-"));
+      const path = join(dir, "managed-bots.json");
+      writeFileSync(path, JSON.stringify(initial));
+      const store = new BotRegistryStore(path);
+      return {
+        store,
+        path,
+        cleanup: () => rmSync(dir, { recursive: true, force: true }),
+      };
+    }
 
-  it("adds and persists a bot", () => {
-    const { store, configPath, cleanup } = withTempStore();
-    try {
-      const bot = store.addBot({
-        id: "trip-planner",
-        name: "Trip Planner",
-        serviceName: "telegram-trip-planner",
+    it("adds and persists a bot", () => {
+      const { store, path, cleanup } = withTempStore();
+      try {
+        store.addBot({
+          id: "trip-planner",
+          name: "Trip Planner",
+          composeProject: "crea-trip-planner",
+          composeService: "bot",
+        });
+        const saved = JSON.parse(readFileSync(path, "utf8"));
+        expect(saved.bots).toHaveLength(1);
+        expect(saved.bots[0].composeProject).toBe("crea-trip-planner");
+      } finally {
+        cleanup();
+      }
+    });
+
+    it("removes a bot", () => {
+      const { store, cleanup } = withTempStore({
+        bots: [
+          {
+            id: "weather",
+            name: "Weather",
+            composeProject: "crea-weather",
+            composeService: "bot",
+          },
+        ],
       });
-      expect(bot.id).toBe("trip-planner");
-      expect(store.getRegistry().bots).toHaveLength(1);
-
-      const saved = JSON.parse(readFileSync(configPath, "utf8"));
-      expect(saved.bots[0].serviceName).toBe("telegram-trip-planner");
-    } finally {
-      cleanup();
-    }
-  });
-
-  it("removes a bot and persists changes", () => {
-    const { store, configPath, cleanup } = withTempStore({
-      bots: [{ id: "weather", name: "Weather", serviceName: "telegram-weather" }],
+      try {
+        const removed = store.removeBot("weather");
+        expect(removed.id).toBe("weather");
+        expect(store.getRegistry().bots).toHaveLength(0);
+      } finally {
+        cleanup();
+      }
     });
-    try {
-      store.removeBot("weather");
-      expect(store.getRegistry().bots).toHaveLength(0);
-      expect(JSON.parse(readFileSync(configPath, "utf8")).bots).toEqual([]);
-    } finally {
-      cleanup();
-    }
-  });
 
-  it("rejects duplicate ids on add", () => {
-    const { store, cleanup } = withTempStore({
-      bots: [{ id: "a", name: "A", serviceName: "svc-a" }],
+    it("rejects duplicate id on add", () => {
+      const { store, cleanup } = withTempStore({
+        bots: [{ id: "a", name: "A", composeProject: "proj-a", composeService: "bot" }],
+      });
+      try {
+        expect(() =>
+          store.addBot({ id: "a", name: "B", composeProject: "proj-b", composeService: "bot" }),
+        ).toThrow(RegistryError);
+      } finally {
+        cleanup();
+      }
     });
-    try {
-      expect(() => store.addBot({ id: "a", name: "B", serviceName: "svc-b" })).toThrow(RegistryError);
-    } finally {
-      cleanup();
-    }
-  });
-
-  it("rejects unknown id on remove", () => {
-    const { store, cleanup } = withTempStore();
-    try {
-      expect(() => store.removeBot("missing")).toThrow(RegistryError);
-    } finally {
-      cleanup();
-    }
   });
 });

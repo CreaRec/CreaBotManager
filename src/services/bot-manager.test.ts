@@ -2,94 +2,134 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BotRegistryStore, parseBotRegistryJson } from "./bot-registry";
 import { BotManager, formatActionResult, formatBotAdded, formatBotList } from "./bot-manager";
 
-const { runSystemctlMock, fetchServiceLogsMock } = vi.hoisted(() => ({
-  runSystemctlMock: vi.fn(),
-  fetchServiceLogsMock: vi.fn(),
+const {
+  listComposeContainersMock,
+  runContainerActionMock,
+  fetchContainerLogsMock,
+} = vi.hoisted(() => ({
+  listComposeContainersMock: vi.fn(),
+  runContainerActionMock: vi.fn(),
+  fetchContainerLogsMock: vi.fn(),
 }));
 
-vi.mock("./systemd", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./systemd")>();
+vi.mock("./docker", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./docker")>();
   return {
     ...actual,
-    runSystemctl: runSystemctlMock,
-    fetchServiceLogs: fetchServiceLogsMock,
+    listComposeContainers: listComposeContainersMock,
+    runContainerAction: runContainerActionMock,
+    fetchContainerLogs: fetchContainerLogsMock,
   };
 });
 
 const registry = parseBotRegistryJson(
   JSON.stringify({
     bots: [
-      { id: "trip-planner", name: "Trip Planner", serviceName: "telegram-trip-planner" },
-      { id: "weather", name: "Weather", serviceName: "telegram-weather" },
+      {
+        id: "trip-planner",
+        name: "Trip Planner",
+        composeProject: "crea-trip-planner",
+        composeService: "bot",
+      },
+      {
+        id: "weather",
+        name: "Weather",
+        composeProject: "crea-weather",
+        composeService: "bot",
+      },
     ],
   }),
 );
 
 const store = new BotRegistryStore("config/managed-bots.json", registry);
 
-const systemdCfg = {
-  systemctlPath: "/bin/systemctl",
-  journalctlPath: "/bin/journalctl",
-  useSudo: true,
+const dockerCfg = {
+  dockerPath: "/usr/bin/docker",
 };
 
 describe("BotManager", () => {
   beforeEach(() => {
-    runSystemctlMock.mockReset();
-    fetchServiceLogsMock.mockReset();
+    listComposeContainersMock.mockReset();
+    runContainerActionMock.mockReset();
+    fetchContainerLogsMock.mockReset();
   });
 
   it("lists bot statuses", async () => {
-    runSystemctlMock
-      .mockResolvedValueOnce({ stdout: "active", stderr: "", exitCode: 0 })
-      .mockResolvedValueOnce({ stdout: "inactive", stderr: "", exitCode: 3 });
+    listComposeContainersMock
+      .mockResolvedValueOnce({
+        containers: [{ id: "1", name: "a", status: "Up", state: "running" }],
+        command: { stdout: "", stderr: "", exitCode: 0 },
+      })
+      .mockResolvedValueOnce({
+        containers: [{ id: "2", name: "b", status: "Exited", state: "exited" }],
+        command: { stdout: "", stderr: "", exitCode: 0 },
+      });
 
-    const manager = new BotManager(store, systemdCfg);
+    const manager = new BotManager(store, dockerCfg);
     const statuses = await manager.listStatuses();
 
     expect(statuses).toHaveLength(2);
     expect(statuses[0]?.state).toBe("active");
     expect(statuses[1]?.state).toBe("inactive");
-    expect(runSystemctlMock).toHaveBeenCalledWith(systemdCfg, "is-active", "telegram-trip-planner");
+    expect(listComposeContainersMock).toHaveBeenCalledWith(dockerCfg, {
+      composeProject: "crea-trip-planner",
+      composeService: "bot",
+    });
   });
 
   it("runs start only for known bot ids", async () => {
-    runSystemctlMock.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
-    const manager = new BotManager(store, systemdCfg);
+    runContainerActionMock.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    const manager = new BotManager(store, dockerCfg);
 
     const ok = await manager.runAction("trip-planner", "start");
     const missing = await manager.runAction("unknown", "start");
 
     expect(ok?.success).toBe(true);
     expect(missing).toBeUndefined();
-    expect(runSystemctlMock).toHaveBeenCalledWith(systemdCfg, "start", "telegram-trip-planner");
+    expect(runContainerActionMock).toHaveBeenCalledWith(
+      dockerCfg,
+      { composeProject: "crea-trip-planner", composeService: "bot" },
+      "start",
+    );
   });
 
   it("formats list and action messages", async () => {
-    const manager = new BotManager(store, systemdCfg);
-    runSystemctlMock.mockResolvedValue({ stdout: "active", stderr: "", exitCode: 0 });
+    const manager = new BotManager(store, dockerCfg);
+    listComposeContainersMock.mockResolvedValue({
+      containers: [{ id: "1", name: "a", status: "Up", state: "running" }],
+      command: { stdout: "", stderr: "", exitCode: 0 },
+    });
     const statuses = await manager.listStatuses();
     expect(formatBotList(statuses)).toContain("Trip Planner");
     expect(formatBotAdded(registry.bots[0]!)).toContain("trip-planner");
+    expect(formatBotAdded(registry.bots[0]!)).toContain("crea-trip-planner/bot");
   });
 
-  it("formats action result with sudo hint", () => {
+  it("formats action result with docker hint", () => {
     const message = formatActionResult({
       bot: registry.bots[0]!,
       action: "stop",
-      command: { stdout: "", stderr: "sudo: a password is required", exitCode: 1 },
+      command: {
+        stdout: "",
+        stderr: "Got permission denied while trying to connect to the Docker daemon",
+        exitCode: 1,
+      },
       success: false,
     });
     expect(message).toContain("Остановка");
-    expect(message).toContain("sudo: a password is required");
-    expect(message).toContain("sudoers");
+    expect(message).toContain("permission denied");
+    expect(message).toContain("DOCKER_GID");
   });
 
   it("fetches logs for a bot", async () => {
-    fetchServiceLogsMock.mockResolvedValue({ stdout: "log", stderr: "", exitCode: 0 });
-    const manager = new BotManager(store, systemdCfg);
+    fetchContainerLogsMock.mockResolvedValue({ stdout: "log", stderr: "", exitCode: 0 });
+    const manager = new BotManager(store, dockerCfg);
     const result = await manager.getLogs("weather", 20);
     expect(result?.command.stdout).toBe("log");
-    expect(fetchServiceLogsMock).toHaveBeenCalledWith(systemdCfg, "telegram-weather", 20);
+    expect(fetchContainerLogsMock).toHaveBeenCalledWith(
+      dockerCfg,
+      { composeProject: "crea-weather", composeService: "bot" },
+      20,
+    );
   });
 });

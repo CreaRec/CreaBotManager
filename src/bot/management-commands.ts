@@ -21,13 +21,15 @@ function extractArgAndNumber(text: string): { id: string; lines: number } {
   return { id, lines: Number.isFinite(lines) ? lines : 30 };
 }
 
-function parseBotAddArgs(text: string): { id: string; serviceName: string; name: string } | null {
+function parseBotAddArgs(
+  text: string,
+): { id: string; composeProject: string; composeService: string; name: string } | null {
   const parts = text.trim().split(/\s+/);
   if (parts.length < 3) return null;
   const id = parts[1] ?? "";
-  const serviceName = parts[2] ?? "";
+  const composeProject = parts[2] ?? "";
   const name = parts.slice(3).join(" ").trim() || id;
-  return { id, serviceName, name };
+  return { id, composeProject, composeService: "bot", name };
 }
 
 function formatRegistryError(err: unknown): string {
@@ -58,10 +60,10 @@ export function registerManagementCommands(bot: Telegraf, deps: MenuContext): vo
     if (!args) {
       await ctx.reply(
         [
-          "Usage: /botadd <id> <service> [name]",
+          "Usage: /botadd <id> <composeProject> [name]",
           "",
           "Example:",
-          "/botadd trip-planner telegram-trip-planner Crea Trip Planner",
+          "/botadd trip-planner crea-trip-planner Crea Trip Planner",
         ].join("\n"),
       );
       return;

@@ -1,15 +1,16 @@
 # CreaBotManager
 
-Telegram bot template for CreaRec bots. Based on the same patterns as Crea Trip Planner: TypeScript, Telegraf, Zod-validated config, Vitest, and bash/rsync deploy with systemd on the server.
+Telegram bot that manages other CreaRec bots running as Docker Compose stacks. TypeScript, Telegraf, Zod-validated config, Vitest, GHCR image + Compose deploy.
 
 ```
-Telegram  <->  Bot (Node + TypeScript + Telegraf)
+Telegram  <->  Manager (Node in Docker)  <->  Docker socket  <->  managed bots
 ```
 
 ## Requirements
 
-- Node.js >= 20
+- Node.js >= 20 (local development)
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
+- Docker + Compose on the production host (same as the managed bots)
 
 ## Quick start (local)
 
@@ -28,6 +29,8 @@ npm install
 npm run dev
 ```
 
+Local mode talks to Docker on the host (`DOCKER_PATH` / `DOCKER_HOST`). For production, see [docs/docker.md](docs/docker.md).
+
 ## Scripts
 
 | Command | Description |
@@ -38,30 +41,39 @@ npm run dev
 | `npm test` | Run Vitest test suite |
 | `npm run typecheck` | Type-check without emitting |
 
-## Managed bots (systemd)
+## Managed bots (Docker Compose)
 
-CreaBotManager controls other Telegram bots running as **systemd services** on Debian.
+CreaBotManager controls other Telegram bots by **Compose project + service** labels on the host Docker daemon.
 
 ### 1. Register bots
 
 **Via Telegram (recommended):**
 
 ```
-/botadd trip-planner telegram-trip-planner Crea Trip Planner
+/botadd trip-planner crea-trip-planner Crea Trip Planner
 /botremove trip-planner
 ```
 
 - `id` — short name for commands (`/botstart trip-planner`), lowercase with hyphens
-- `service` — exact systemd unit name (without `.service`)
+- `composeProject` — Compose project name (usually the deploy directory basename)
 - `name` — optional display name (defaults to `id`)
+- `composeService` defaults to `bot`
 
-Changes are saved to `data/managed-bots.json` immediately — no bot restart required (this file is not overwritten by deploy).
+Examples matching current production stacks:
 
-You can also edit `data/managed-bots.json` manually (see `config/managed-bots.example.json` for the format).
+```
+/botadd trip-planner crea-trip-planner Crea Trip Planner
+/botadd video-downloader crea-video-downloader-bot Crea Video Downloader
+/botadd flibusta crea-flibusta-bot FlibustaBot
+```
+
+Changes are saved to `data/managed-bots.json` immediately — no manager restart required (this file is not overwritten by deploy).
+
+You can also edit `data/managed-bots.json` manually (see `config/managed-bots.example.json`).
 
 ### 2. User access (per-bot permissions)
 
-In `.env` specify **only your** Telegram id as admin (one person):
+In `.env` specify **only your** Telegram id as admin:
 
 ```
 ADMIN_TELEGRAM_IDS=123456789
@@ -81,67 +93,50 @@ Do **not** list operators here — add them via Telegram:
 
 Operators **cannot** run `/botadd` or `/botremove`.
 
-### 3. Server permissions
+### 3. Docker access
 
-The manager process must be allowed to run `systemctl` and `journalctl` for those units. See `deploy/sudoers-crea-bot-manager.example` — install via `visudo` on the server.
+The manager container mounts `/var/run/docker.sock` and joins the host `docker` group via `DOCKER_GID` in `.env`:
 
-Set `USE_SUDO_FOR_SYSTEMCTL=true` in `.env` (default).
-
-**Troubleshooting status and control:**
-
-- `unknown` or ❓ — `systemctl is-active` returned an unexpected value (often missing sudo).
-- Stop/restart fails but status shows `active` — reading status may work without sudo; **start/stop/restart** need the full sudoers file (all `start`, `stop`, `restart`, `is-active`, `status`, `journalctl` lines).
-- On the server as user `crearec`:
-
-```bash
-sudo -n systemctl is-active telegram-trip-planner
-sudo -n systemctl stop telegram-trip-planner
-sudo -n systemctl start telegram-trip-planner
+```sh
+DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)   # Linux
 ```
 
-All three must work without a password prompt. Install rules from `deploy/sudoers-crea-bot-manager.example` (replace `USER` with `crearec`). The `show` rule is required for the human-readable **Статус** button.
+**Troubleshooting:**
 
-**Slow stop/restart (~90 seconds):** default systemd `TimeoutStopSec` is 90s. Deploy runs `scripts/configure-managed-bot-timeouts.sh` to set `TimeoutStopSec=10` for the manager and every bot in `data/managed-bots.json`. On an existing server:
+- `unknown` / ❓ — container missing or Docker socket inaccessible
+- Permission errors — check `DOCKER_GID` and that the socket is mounted
+- «Контейнер не найден» — wrong `composeProject` / `composeService`, or the stack is not running
+
+On the server:
 
 ```bash
-cd ~/crea-bot-manager
-npm run build
-sudo ./scripts/configure-managed-bot-timeouts.sh
+docker ps --filter label=com.docker.compose.project=crea-trip-planner
+docker compose -p crea-trip-planner ps
 ```
-
-Check: `systemctl show telegram-flibusta -p TimeoutStopUSec` → `10s`. Template for new bots: `deploy/telegram-managed-bot.service.example`.
 
 ### 4. Telegram interface
 
-**Reply keyboard (always visible at the bottom):**
+**Reply keyboard:** `📋 Боты`, `🏠 Меню`, `📌 Мои боты`, `👥 Пользователи` (admin), `ℹ️ Помощь`
 
-- `📋 Боты` — список ботов (inline-кнопки)
-- `🏠 Меню` — главное inline-меню
-- `📌 Мои боты` — назначенные вам боты
-- `👥 Пользователи` — операторы (админ)
-- `ℹ️ Помощь` — справка
-
-**Inline menus** — выбор бота / действия / пользователя внутри сообщений.
-
-**Text commands (for adding entries):**
+**Registry (admin):**
 
 | Command | Action |
 |---------|--------|
-| `/botadd <id> <service> [name]` | Register a bot |
+| `/botadd <id> <composeProject> [name]` | Register a bot |
 | `/botremove <id>` | Remove bot from registry |
 
-**Service control (admin or assigned operator):**
+**Lifecycle (admin or assigned operator):**
 
 | Command | Action |
 |---------|--------|
 | `/bots` | List accessible bots and live status |
-| `/botstart <id>` | `systemctl start` |
-| `/botstop <id>` | `systemctl stop` |
-| `/botrestart <id>` | `systemctl restart` |
-| `/botstatus <id>` | `systemctl status` |
-| `/botlogs <id> [lines]` | `journalctl` tail (max 200 lines) |
+| `/botstart <id>` | `docker start` |
+| `/botstop <id>` | `docker stop` |
+| `/botrestart <id>` | `docker restart` |
+| `/botstatus <id>` | Container inspect status |
+| `/botlogs <id> [lines]` | `docker logs` tail (max 200 lines) |
 
-Admins have full access. Operators are limited to bots granted via `/usergrant`. Service names come from the registry only — arbitrary shell input is never executed.
+Targets come from the registry only — arbitrary shell input is never executed.
 
 ## Project layout
 
@@ -149,103 +144,51 @@ Admins have full access. Operators are limited to bots granted via `/usergrant`.
 src/
   index.ts       # Entry point, graceful shutdown
   config.ts      # Zod-validated environment
-  bot/bot.ts     # Telegraf handlers
-  services/      # Bot registry, systemd control
+  bot/           # Telegraf handlers and menus
+  services/      # Registry, Docker control, access
 config/
   managed-bots.example.json
   user-permissions.example.json
-data/                            # Runtime data (preserved across deploys)
-  managed-bots.json
-  user-permissions.json
+data/            # Runtime data (preserved across deploys)
+Dockerfile
+docker-compose.yml
+docs/docker.md
 scripts/
-  start-local.sh         # Local dev bootstrap
-  deploy.sh              # Local → remote deploy (runs tests first)
-  deploy-remote.sh       # Server build + systemd (called by deploy.sh)
-  setup-runtime-data.sh  # data/ dir, migration, permissions (called by deploy-remote)
-deploy/
-  telegram-bot-manager.service       # systemd unit template
-  telegram-managed-bot.service.example
-  systemd-timeout-stop.conf          # drop-in snippet (TimeoutStopSec=10)
-  sudoers-crea-bot-manager.example
+  start-local.sh
 ```
 
-## Deploy (server)
+## Deploy (production)
 
-Production runs the bot natively via **systemd** (no Docker required for the template).
+Production is **GHCR + Docker Compose** only. There is no local deploy script.
 
-1. Create `.env` on the server (copy from `.env.example`).
-2. From your dev machine:
+See [docs/docker.md](docs/docker.md) for bootstrap, migration from systemd, and ops.
 
-```bash
-chmod +x scripts/deploy.sh
-./scripts/deploy.sh          # local network (192.168.1.135)
-./scripts/deploy.sh --remote # via crearec.app
-```
+Deploy directory: `/home/crearec/crea-bot-manager`  
+Image: `ghcr.io/crearec/crea-bot-manager`
 
-Deploy syncs files with `rsync`, runs `npm run build` on the server, and restarts the `telegram-bot-manager` systemd service.
+**Runtime data preserved across deploys:**
 
-**Runtime data is preserved across deploys:**
-
-- `data/managed-bots.json` — registered bots (from `/botadd`)
-- `data/user-permissions.json` — operators and access (from `/useradd`, `/usergrant`)
-
-The `data/` directory is **not** overwritten by `rsync`. On each deploy, `scripts/setup-runtime-data.sh` runs automatically: creates `data/`, migrates legacy `config/*.json` if needed, sets file permissions, and updates `.env` paths to `data/` when missing.
-
-Override defaults via environment variables: `SERVER_HOST`, `SSH_USER`, `REMOTE_APP_DIR`, `SERVICE_NAME`, `DEPLOY_PASSWORD`.
+- `data/managed-bots.json`
+- `data/user-permissions.json`
+- `.env` (never overwritten by Actions)
 
 ## GitHub Actions CI/CD
 
-Merging into `main` triggers an automatic deploy to the production server via [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml).
+Merging into `main` runs test → publish image to GHCR → SSH deploy (`docker compose pull && up -d`).
 
-**On every push and pull request:** the `test` job runs `npm ci` and `npm test`.
-
-**On push to `main` only:** the `deploy` job runs after tests pass. GitHub Actions sets `CI=true` on the runner; `scripts/deploy.sh` forwards `CI`/`GITHUB_ACTIONS` to the remote script and skips forced TTY (`-tt`) when `DEPLOY_PASSWORD` is unset. The workflow then:
-
-1. Writes the deploy SSH private key from GitHub Secrets
-2. Opens an SSH ControlMaster socket authenticated with that key
-3. Calls `./scripts/deploy.sh --remote`, which reuses the existing socket for rsync and remote build/restart
-
-Required GitHub Secrets (Settings → Secrets and variables → Actions):
+Required GitHub Secrets:
 
 | Secret | Purpose |
 |--------|---------|
-| `DEPLOY_SSH_KEY` | Private deploy key (matching the public key in server `authorized_keys`) |
-| `DEPLOY_HOST` | Server hostname, for example `crearec.app` |
-| `DEPLOY_USER` | SSH user, for example `crearec` |
+| `DEPLOY_SSH_KEY` | Private deploy key |
+| `DEPLOY_HOST` | Server hostname |
+| `DEPLOY_USER` | SSH user (for example `crearec`) |
 
-**Server prerequisites for CI deploy** (one-time setup):
+GHCR push uses the workflow `GITHUB_TOKEN` (`packages: write`). The server needs a one-time `docker login ghcr.io` with a `read:packages` PAT.
 
-- Public deploy key in `~/.ssh/authorized_keys` for the deploy user
-- Passwordless sudo for deploy commands. **The sudoers username must match `DEPLOY_USER` in GitHub Secrets exactly** (for example `crearec`).
-
-  On the server, as a user with sudo access, run:
-
-  ```sh
-  DEPLOY_USER=crearec   # must match GitHub secret DEPLOY_USER
-  command -v cp systemctl journalctl
-
-  sudo tee "/etc/sudoers.d/${DEPLOY_USER}-deploy" > /dev/null <<EOF
-  ${DEPLOY_USER} ALL=(ALL) NOPASSWD: /bin/cp, /usr/bin/cp, /bin/systemctl, /usr/bin/systemctl, /usr/bin/journalctl
-  EOF
-  sudo chmod 440 "/etc/sudoers.d/${DEPLOY_USER}-deploy"
-  sudo visudo -c -f "/etc/sudoers.d/${DEPLOY_USER}-deploy"
-  ```
-
-  Then **as the deploy user** (not root), verify no password is asked:
-
-  ```sh
-  sudo -n systemctl --version
-  sudo -n cp --version
-  sudo -n systemctl status telegram-bot-manager
-  ```
-
-- Node.js and `.env` already configured on the server
-
-`DEPLOY_PASSWORD` is not used in CI. The workflow never overwrites `data/managed-bots.json`, `data/user-permissions.json`, or `.env` on the server.
-
-## Extending the template
+## Extending
 
 - Add handlers in `src/bot/bot.ts`
-- Add business logic under `src/services/` (import module files directly, no barrel index)
-- Add tests as `src/**/*.test.ts` next to the code they validate
+- Add business logic under `src/services/`
+- Add tests as `src/**/*.test.ts`
 - Update `.env.example` when adding new config keys

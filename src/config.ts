@@ -9,12 +9,8 @@ const schema = z.object({
   BOT_HANDLER_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
   MANAGED_BOTS_CONFIG: z.string().min(1).default("data/managed-bots.json"),
   USER_PERMISSIONS_CONFIG: z.string().min(1).default("data/user-permissions.json"),
-  SYSTEMCTL_PATH: z.string().min(1).default("/bin/systemctl"),
-  JOURNALCTL_PATH: z.string().min(1).default("/bin/journalctl"),
-  USE_SUDO_FOR_SYSTEMCTL: z
-    .enum(["true", "false", "1", "0", "yes", "no"])
-    .default("true")
-    .transform((v) => v === "true" || v === "1" || v === "yes"),
+  DOCKER_PATH: z.string().min(1).default("/usr/bin/docker"),
+  DOCKER_HOST: z.string().min(1).optional(),
 });
 
 export interface AppConfig {
@@ -23,9 +19,8 @@ export interface AppConfig {
   botHandlerTimeoutMs: number;
   managedBotsConfigPath: string;
   userPermissionsConfigPath: string;
-  systemctlPath: string;
-  journalctlPath: string;
-  useSudoForSystemctl: boolean;
+  dockerPath: string;
+  dockerHost?: string;
 }
 
 function parseIds(raw: string | undefined): number[] {
@@ -61,9 +56,8 @@ function build(): AppConfig {
     botHandlerTimeoutMs: parsed.BOT_HANDLER_TIMEOUT_MS,
     managedBotsConfigPath: parsed.MANAGED_BOTS_CONFIG,
     userPermissionsConfigPath: parsed.USER_PERMISSIONS_CONFIG,
-    systemctlPath: parsed.SYSTEMCTL_PATH,
-    journalctlPath: parsed.JOURNALCTL_PATH,
-    useSudoForSystemctl: parsed.USE_SUDO_FOR_SYSTEMCTL,
+    dockerPath: parsed.DOCKER_PATH,
+    dockerHost: parsed.DOCKER_HOST,
   };
 }
 

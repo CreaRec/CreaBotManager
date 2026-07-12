@@ -20,22 +20,26 @@ export function isMessageNotModifiedError(err: unknown): boolean {
   return msg.includes("message is not modified");
 }
 
-export function isSudoDenied(output: string): boolean {
-  return formatSudoHint(output) !== null;
+export function isDockerDenied(output: string): boolean {
+  return formatDockerHint(output) !== null;
 }
 
-export function formatSudoHint(output: string): string | null {
+export function formatDockerHint(output: string): string | null {
   const lower = output.toLowerCase();
   if (
-    lower.includes("password is required") ||
-    lower.includes("not allowed to execute") ||
-    lower.includes("a terminal is required")
+    lower.includes("permission denied") ||
+    lower.includes("cannot connect to the docker daemon") ||
+    lower.includes("error while dialing") ||
+    lower.includes("connect: no such file") ||
+    lower.includes("got permission denied while trying to connect")
   ) {
     return (
-      "Нет прав sudo для systemctl. Установите `/etc/sudoers.d/crea-bot-manager` " +
-      "(см. `deploy/sudoers-crea-bot-manager.example`) и проверьте: " +
-      "`sudo -n systemctl is-active telegram-trip-planner`"
+      "Нет доступа к Docker. Смонтируйте `/var/run/docker.sock` и задайте `DOCKER_GID` " +
+      "(GID группы `docker` на хосте). Проверьте: `docker ps`"
     );
+  }
+  if (lower.includes("no container found")) {
+    return "Контейнер не найден. Проверьте `composeProject` / `composeService` и что стек запущен.";
   }
   return null;
 }
