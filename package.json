@@ -5,7 +5,7 @@
   "description": "Telegram bot template for CreaRec bots.",
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

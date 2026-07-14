@@ -8,7 +8,7 @@ Telegram  <->  Manager (Node in Docker)  <->  Docker socket  <->  managed bots
 
 ## Requirements
 
-- Node.js >= 20 (local development)
+- Node.js >= 24 (local development)
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
 - Docker + Compose on the production host (same as the managed bots)
 
