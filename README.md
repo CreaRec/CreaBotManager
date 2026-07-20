@@ -176,15 +176,17 @@ Image: `ghcr.io/crearec/crea-bot-manager`
 
 ## GitHub Actions CI/CD
 
-Merging into `main` runs test → publish image to GHCR → SSH deploy (`docker compose pull && up -d`).
+Merging into `main` runs test → publish image to GHCR → Tailscale join (`tag:ci`) → SSH deploy (`docker compose pull && up -d`).
 
 Required GitHub Secrets:
 
 | Secret | Purpose |
 |--------|---------|
 | `DEPLOY_SSH_KEY` | Private deploy key |
-| `DEPLOY_HOST` | Server hostname |
+| `DEPLOY_HOST` | Tailscale IP or MagicDNS hostname (for example `100.118.169.52`) |
 | `DEPLOY_USER` | SSH user (for example `crearec`) |
+| `TS_OAUTH_CLIENT_ID` | Tailscale OAuth client ID (Trust credentials) for ephemeral CI nodes |
+| `TS_OAUTH_SECRET` | Tailscale OAuth client secret (Trust credentials) |
 
 GHCR push uses the workflow `GITHUB_TOKEN` (`packages: write`). The server needs a one-time `docker login ghcr.io` with a `read:packages` PAT.
 

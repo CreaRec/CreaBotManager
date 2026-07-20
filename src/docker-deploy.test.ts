@@ -22,6 +22,8 @@ describe("docker deploy contracts", () => {
     expect(workflow).toMatch(/packages:\s*write/);
     expect(workflow).toMatch(/ghcr\.io\/crearec\/crea-bot-manager/);
     expect(workflow).toMatch(/node-version:\s*"24"/);
+    expect(workflow).toMatch(/tailscale\/github-action/);
+    expect(workflow).toMatch(/tag:ci/);
     expect(workflow).toMatch(/docker compose pull/);
     expect(workflow).toMatch(/docker compose up -d/);
     expect(workflow).toMatch(/docker-compose\.yml/);
